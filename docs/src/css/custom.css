@@ -1,0 +1,31 @@
+/*
+ * Global overrides for the Infima theme.
+ * Primary colour: amber (construction). Light-mode primary #b45309 on white = 5.0:1 (WCAG AA for text).
+ */
+:root {
+  --ifm-color-primary: #b45309;
+  --ifm-color-primary-dark: #a24b08;
+  --ifm-color-primary-darker: #994708;
+  --ifm-color-primary-darkest: #7e3a06;
+  --ifm-color-primary-light: #c65b0a;
+  --ifm-color-primary-lighter: #cf5f0a;
+  --ifm-color-primary-lightest: #ea6c0b;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #f59e0b;
+  --ifm-color-primary-dark: #e08e0a;
+  --ifm-color-primary-darker: #d48609;
+  --ifm-color-primary-darkest: #ae6e08;
+  --ifm-color-primary-light: #f6a826;
+  --ifm-color-primary-lighter: #f7ad33;
+  --ifm-color-primary-lightest: #f8bc5b;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Wide ER diagrams: allow horizontal scroll instead of shrinking text. */
+.docusaurus-mermaid-container {
+  overflow-x: auto;
+}
