@@ -1,0 +1,10 @@
+{
+  "label": "Architecture decisions",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "slug": "/adr",
+    "title": "Architecture decision records",
+    "description": "Each ADR records one decision: context, the decision, rejected alternatives and the consequences accepted."
+  }
+}
