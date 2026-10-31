@@ -1,0 +1,8 @@
+{
+  "label": "Design",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "description": "Prototype, wireframes and design decisions for SiteLog."
+  }
+}
