@@ -1,0 +1,20 @@
+# Local development profile: PostgreSQL from docker-compose.yml.
+# Credentials come from the git-ignored .env file (template: .env.example),
+# the same file docker compose reads, so both always agree.
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:postgresql://localhost:${DB_PORT}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+
+server:
+  error:
+    include-message: always
+
+logging:
+  level:
+    org.flywaydb: info

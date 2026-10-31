@@ -1,0 +1,4 @@
+-- V1: baseline.
+-- Marks the starting point of the schema history managed by Flyway.
+-- Domain tables are added in later versioned migrations (V2, V3, ...);
+-- Hibernate runs with ddl-auto=validate and never creates or alters tables.
