@@ -1,0 +1,26 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node / Docusaurus
+node_modules/
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Other editors
+.vscode/
