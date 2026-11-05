@@ -1,139 +1,104 @@
 ---
 title: AI usage log
 sidebar_position: 5
-description: How AI supported routine setup and initial drafts under the author’s direction and review.
+description: My design and implementation work on SiteLog and the tasks where AI assisted.
 ---
 
 # AI usage log
 
-This log documents how I used AI assistants as supporting tools while building SiteLog. It is separate from the product's own AI feature, which is evaluated in `docs/ai-evaluation.md` from M3 onwards.
+I designed SiteLog, defined its business rules and domain model, chose its architecture and technologies, and planned the implementation. I used Claude Code to help prepare routine setup files and first drafts of documentation, database migrations, and selected tests. I used Figma AI and Figma Make to generate initial screen layouts from my specifications.
 
-**Tools used:** Claude Code for development assistance in the repository, and Figma AI for initial wireframe drafts.
+I defined the requirements for each task, reviewed the output against the assignment and the domain model, and decided what to incorporate. Each milestone records my own work, where AI assisted, what I corrected, and what I verified.
 
-The log is organised by milestone. Each milestone section records my own design work, where AI assisted, the prompts that mattered, what I corrected, and how I validated the result. New milestones are added below as the project progresses.
-
-## Approach to AI assistance
-
-I was responsible for analysing the assignment, defining the domain model, choosing the architecture and technologies, and planning the implementation. I used AI as a supporting tool for routine setup, repetitive configuration, and initial documentation and design drafts.
-
-I defined the purpose and constraints of each task before requesting assistance. The assistants helped turn those instructions into draft files or screen layouts. I decided which suggestions to accept, checked them against the requirements, and corrected inconsistencies before incorporating them into the project.
+The AI feature within SiteLog is evaluated separately in `docs/ai-evaluation.md` from M3 onwards.
 
 ## Week 5 — M1: project setup, domain model, and wireframes
 
-### My design and planning work
+### My decisions and work
 
-I established the main modelling and technology decisions before using AI to draft supporting artefacts.
+- **Domain model.** I defined the two branches of the aggregate, the four roles and their permissions, and the state machines for daily logs and incidents. I modelled `CrewAssignment` as an association entity that records hours, worker count, and task. Each work entry can have multiple crew assignments.
+- **Architecture and tools.** I chose Render for application hosting, Supabase for PostgreSQL, Anthropic Claude through Spring AI 2.x for the product's AI feature, and Docusaurus for documentation. I selected `hr.algebra.sitelog` as the package name and kept the documentation site and its content in the existing `docs/` directory. I chose Supabase in part because Render's free database would expire before the defence.
+- **Reopen audit trail.** I compared Hibernate Envers with a custom audit table and chose Envers to capture changes and deletions in work entries and crew assignments. I planned to formalise this choice in ADR-0003.
+- **Security and tests.** I implemented the temporary `SecurityConfig` and wrote three Testcontainers smoke tests covering the Flyway schema version, the public health endpoint, and the redirect to login.
+- **Screen coverage.** I walked through the user workflows and identified gaps in the initial wireframes. I added incident details with corrective actions, a corrective action form, a site form, crews, users, and a profile page to the high-fidelity design plan. I specified password change and a preferred language stored on the user record.
 
-- **Domain model:** I defined the two branches of the aggregate; modelled `CrewAssignment` as an association entity containing hours, worker count, and task; specified the four roles and their capabilities; and defined the daily log and incident state machines. This model was accepted as the basis for subsequent documentation.
-- **Technology selection:** I chose Render for application hosting, Supabase for PostgreSQL, Anthropic Claude through Spring AI 2.x for the product's AI integration, and Docusaurus for documentation. I selected the package name `hr.algebra.sitelog`. A practical consideration for Supabase was that Render's free database would expire before the defence.
-- **Reopen audit trail (AR1):** I compared Hibernate Envers with a custom audit table and selected Envers to capture changes and deletions in work entries and crew assignments without implementing per-field audit logic. This decision is to be formalised in ADR-0003.
-- **Security and tests:** I implemented the temporary `SecurityConfig` and wrote the three Testcontainers smoke tests, including assertions for the Flyway version, public health endpoint, and redirect to login. I also performed the validation described below.
-- **Documentation structure:** I chose a single `docs/` directory for the Docusaurus site and its content, preserving the paths required by the assignment.
-- **Screen coverage:** I reviewed the wireframes by walking through user workflows. I identified that the incidents list had no detail screen and that profile and administration areas were missing. I added incident details with corrective actions, a corrective action form, a site form, crews, users, and “My profile” to the high-fidelity design plan. The profile includes password change and a preferred language stored on the user.
+### Where AI assisted
 
-### AI support for setup and first drafts
+- **Project setup.** Claude Code helped prepare the Spring Boot 4.1 and Java 25 scaffold and draft the application YAML files, Docker Compose configuration, Flyway baseline, and GitHub Actions workflow.
+- **Documentation.** Claude Code helped configure Docusaurus and turn my model and decision notes into first drafts of the domain-model page, diagrams, ADR-0001, and README.
+- **Wireframes.** Figma AI generated initial layouts from the screen list, fields, roles, and statuses I supplied. I reviewed the frames against the domain model and provided corrections across three revisions.
 
-I used the assistants to help prepare supporting material from requirements and decisions I had already established.
+### What I reviewed and corrected
 
-#### Routine setup and configuration drafts
+- **Concurrency.** I found that the first ADR draft assumed that updating a child entity would increment the daily log's `@Version` automatically. I revised the planned approach to use `LockModeType.OPTIMISTIC_FORCE_INCREMENT` on the daily log when a child changes and documented the additional root update this requires. This strategy still needed implementation-level verification at the end of M1.
+- **Signed-off content.** The draft protection covered only `daily_log`. I identified that signed-off content also lives in `work_entry` and `crew_assignment`, so I expanded the planned trigger coverage to both child tables.
+- **Wireframes.** The generated frames added temperature, a shift supervisor, inspections, and a compliance score. They also limited work entries to one crew and used incident statuses that differed from my state machine. I checked the frames field by field, requested corrections, and checked revision 3 against the model. I also identified screen 04 as the daily log form despite the misspelling in the export name.
+- **Scaffold.** I corrected the Spring Boot parent version from `4.1.2.RELEASE` to `4.1.2` and replaced the default `contextLoads` test with the three smoke tests I wrote.
 
-Claude Code provided assistance with the initial Spring Boot 4.1 / Java 25 scaffold through start.spring.io and draft setup files: `application*.yml`, `docker-compose.yml`, the Flyway baseline, and the CI workflow.
+### What I verified
 
-I used this assistance to reduce repetitive file preparation. I reviewed the resulting files against my selected stack, checked what the configuration actually did, and corrected configuration issues.
+- `./mvnw verify` passed with Testcontainers and PostgreSQL 17.
+- The application started with the `dev` profile against the Docker database, and `/actuator/health` reported `UP`.
+- The documentation site built with broken links configured to fail the build.
+- I checked in the Supabase dashboard that the project used PostgreSQL 17.11, the same major version as the local and test databases.
 
-#### Documentation drafts
+### Representative prompts (summarised)
 
-The assistant helped set up Docusaurus and prepare initial versions of the domain-model page, its diagrams, ADR-0001, and the README. These drafts were based on the model and decisions I supplied.
+1. **Project configuration.** Draft the application YAML, Docker Compose configuration, and Flyway baseline for the stack and package name I selected. Keep the scope to setup files. I am implementing security and tests myself.
+2. **CI workflow.** Draft a minimal GitHub Actions workflow using Java 25 to run my existing `./mvnw verify` command on pushes and pull requests.
+3. **Documentation setup.** Configure Docusaurus to use the existing `docs/` directory, preserve the assignment's required paths, and fail the build on broken links.
+4. **Domain-model documentation.** Draft a page and diagrams from my model. Preserve the supplied entities, relationships, roles, and state transitions. Flag ambiguities for review.
+5. **ADR-0001.** Turn my decision notes into an ADR covering context, decision, alternatives, and consequences. Preserve my choices and mark assumptions for review.
+6. **README.** Organise my notes into a README covering SiteLog's purpose, stack, local setup, and commands. Use the information I supplied.
+7. **Initial wireframes.** Generate layouts from my screen list and domain model. Support multiple crew assignments per work entry and use only the specified fields, roles, and statuses.
+8. **Wireframe revisions.** Apply my review notes. Remove temperature, shift supervisor, inspections, and compliance scores. Support multiple crew assignments and use the incident statuses I supplied.
 
-I checked the drafts against the assignment and domain model, reviewed the technical explanations, and revised claims that did not accurately describe the intended behaviour. The documentation remained subject to the same review as the code and configuration.
+### Items still under review at the end of M1
 
-#### Initial wireframe layouts
+- Whether to keep the `.env` import in `application-dev.yml`. I verified that it worked in the local setup.
+- The wording of ADR-0001's rationale for choosing Flyway over Liquibase, using a surrogate key for `CrewAssignment`, and selecting Supabase over other hosts.
 
-Figma AI generated initial screen layouts from a written screen list. These were visual drafts based on my instructions. I reviewed their screen coverage and user flows against the model I had defined.
+## Week 6 — M2: architecture, database design, and high-fidelity prototype
 
-I compared the screens with the domain model, identified unsupported fields and inconsistent states, and provided corrections across three revisions. I also identified additional screens needed to complete the intended workflows.
+### My decisions and work
 
-### Prompts that mattered (M1)
+- **Signed-off daily logs.** I specified two layers of protection. The service rejects edits, and database triggers enforce the rules on `daily_log`, `work_entry`, and `crew_assignment`. I defined the permitted reopen transition and its conditions.
+- **Reopen transition tests.** I wrote integration tests to verify that a signed-off daily log can be reopened when its revision increases by one and its content stays unchanged. I also tested that the database rejects a reopen operation that attempts to change the log's content.
+- **Schema and constraints.** I used the fields in my domain model and added an optional `site.description` after reviewing the prototype. I specified `CHECK` constraints for incident categories and weather values to match the Java enums.
+- **Audit trail.** I confirmed Hibernate Envers in ADR-0003 and decided that `revinfo` and the `*_aud` tables should reject `UPDATE`, `DELETE`, and `TRUNCATE`. I recorded this decision on 2026-11-04. Migration V5 enforces it.
+- **Demo data.** I kept a second site manager assigned to a different site so I could demonstrate that managers can access only their own sites.
+- **Prototype rules.** I specified that administrators create accounts, users receive in-app notifications, and weather remains optional. I left self-registration and password recovery out of scope. I chose Manrope and used the domain model as the source of truth when the prototype and model differed.
+- **Prototype assembly.** I assembled the screens in Figma, organised them into sections, built the component set and its variants by hand, wired the clickable flow, added the missing daily log empty state, and corrected the screens after the review so they match the model (login, site form and cards, daily log timeline and weather, profile fields, AI panel, compliance caption).
 
-The requests below are the ones behind the M1 setup, documentation and wireframe work described above. Prompts from later milestones are listed in their own milestone sections.
+### Where AI assisted
 
-#### 1. Routine project configuration
+- **Database migrations and tests.** Claude Code helped translate my schema, trigger, audit, and seed specifications into initial SQL for migrations V2–V5 and draft selected integration tests in `src/test/java/hr/algebra/sitelog/db/`. I wrote the reopen transition tests described above.
+- **Technical documentation.** Claude Code prepared first drafts of the architecture overview, database schema page, and ADR-0003 from my decisions and the accepted domain model.
+- **Prototype drafts and exports.** Figma Make generated initial screens from my prompts for the design system, daily logs, incidents and compliance, and site, profile, and admin flows. Claude Code helped compare my exports with the model and assignment, assemble them into `docs/prototype.pdf`, and draft `docs/design-rationale.md`, including the contrast measurements. I reviewed the rationale.
 
-> I have selected Spring Boot 4.1, Java 25, and PostgreSQL for SiteLog. Help me draft the routine setup files for this stack: application YAML, Docker Compose for the local database, and the Flyway baseline structure. Follow the versions and package name I provide. Keep the output limited to setup files; I am implementing the security configuration and tests myself.
+### What I reviewed and corrected
 
-#### 2. CI workflow boilerplate
+- **Envers schema.** I checked the draft against the source for the Hibernate Envers version in use. The audit schema uses the `_aud` suffix, `rev`, and `revtype`. The `revtype` column maps to `smallint` on PostgreSQL. The `@Version` column is excluded from auditing.
+- **Audit strategy.** I kept the default Envers strategy because it inserts new audit rows. `ValidityAuditStrategy` updates the previous row to set `REVEND`, which conflicts with the append-only rule.
+- **Flyway smoke test.** I replaced the M1 assertion that pinned the schema version to `"1"` with a check that no migration is pending. This lets the test remain valid as migrations are added.
+- **Trigger locking.** The trigger reads the parent log status with a plain `SELECT`. I kept concurrency control with the application's optimistic locking strategy because a `FOR SHARE` lock could conflict with the root version update when two editors work concurrently.
+- **`TRUNCATE` protection.** I checked that each audit table had a statement-level trigger for `TRUNCATE`, which row-level triggers do not cover.
 
-> Draft a minimal GitHub Actions workflow that runs my existing Maven verification command, `./mvnw verify`, on pushes and pull requests. Use Java 25. My tests already exist; keep the assistance limited to the workflow YAML and explain the configuration so I can review it.
+### What I verified
 
-#### 3. Documentation structure
+- `./mvnw verify` passed 56 tests against PostgreSQL 17 using Testcontainers.
+- Migrations V1–V5 applied to a clean PostgreSQL 17 database.
+- The new diagrams parsed with the Mermaid version used by the documentation site.
+- The documentation site built with broken links configured to fail the build.
 
-> Help me configure Docusaurus with the documentation content inside the existing `docs/` directory. Preserve the file paths required by my assignment. Suggest a simple sidebar and configure broken links to fail the build. Keep the content structure aligned with the page list I provide.
+### Representative prompts (summarised)
 
-#### 4. Documentation from my domain model
+1. **Signed-off logs.** Draft PostgreSQL triggers that reject `INSERT`, `UPDATE`, and `DELETE` on work entries and crew assignments belonging to a signed-off daily log. For the daily log itself, implement the reopen conditions I specify.
+2. **Envers schema.** Draft the audit tables using the table names, column names, and types expected by the Hibernate Envers version in the project. Check these against that version's source.
+3. **Append-only audit tables.** Draft a migration that rejects `UPDATE`, `DELETE`, and `TRUNCATE` on the revision and audit tables.
 
-> Using the domain model and notes below, prepare a first draft of the domain-model page and its diagrams. Preserve the entities, relationships, roles, and state transitions exactly as specified. Do not introduce new fields or business rules. Flag any ambiguity for my review.
+### Items still under review at the end of M2
 
-#### 5. Formatting an architecture decision record
-
-> Turn my decision notes below into an ADR-0001 draft with context, decision, alternatives considered, and consequences. Preserve my selected technologies and reasons. Do not invent technical guarantees or present assumptions as verified behaviour. Mark missing information for review.
-
-#### 6. README first draft
-
-> Help organise my project notes into a concise README covering the purpose of SiteLog, the stack I selected, local setup, and the commands I provide. Use only the supplied information. Do not claim that features or checks are complete unless my notes explicitly confirm this.
-
-#### 7. Initial Figma layouts
-
-> Create initial wireframe layouts for SiteLog using the screen list and domain model below. Follow the supplied fields, roles, relationships, and status values. A work entry can have multiple crew assignments. Do not add inspections, compliance scores, or fields outside the model. These layouts are drafts that I will review and refine.
-
-#### 8. Figma revision after my review
-
-> Update the wireframes according to my review notes: remove temperature and shift supervisor fields, allow multiple crew assignments per work entry, use the incident statuses I specify, and remove inspections and compliance scores. Preserve the rest of the agreed screen structure. I will check the revised frames against the model.
-
-### Review findings and corrections
-
-The review process included checking the assumptions behind generated output, as well as whether it built or rendered successfully.
-
-#### Concurrency handling in ADR-0001
-
-The initial draft claimed that `@Version` on the daily log would detect concurrent edits to its work entries. I identified that the claim did not account for child-entity updates: a child change does not automatically increment the root's version.
-
-The documented approach was revised to load the root with `LockModeType.OPTIMISTIC_FORCE_INCREMENT` whenever a child changes. The documentation also records the cost of an additional root update per child change. This is the planned concurrency strategy and still requires implementation-level verification.
-
-#### Scope of immutability
-
-The initial draft protected only `daily_log`. I checked this against the domain requirements and identified that legally relevant content also resides in `work_entry` and `crew_assignment`.
-
-The planned database triggers were expanded to cover those child entities so that the protection reflects the scope of the relevant content.
-
-#### Wireframe consistency with the domain model
-
-The generated frames introduced elements that were not part of the model, even though prompt 7 explicitly required multiple crew assignments per work entry and excluded inspections, compliance scores and fields outside the model:
-
-- Temperature and shift supervisor fields.
-- A single crew per work entry instead of multiple crew assignments.
-- Incident statuses that differed from the defined state machine.
-- Inspections and a compliance score outside the agreed scope.
-
-Stating the constraints in the prompt was therefore not enough: each frame had to be checked field by field against the domain model. I documented these divergences, requested their correction with prompt 8, and checked the result in revision 3. I also identified screen 04 as the daily log form despite its misspelled export name.
-
-#### Configuration quality
-
-The scaffold contained the invalid parent version `4.1.2.RELEASE`, which was corrected to `4.1.2`.
-
-I replaced the scaffold's default `contextLoads` test, which contained no explicit assertions, with tests I wrote to check the Flyway version, the public health endpoint, and the redirect to login.
-
-### Validation performed
-
-- `./mvnw verify` passes with Testcontainers and PostgreSQL 17.
-- The application starts with the `dev` profile against the Docker database, and `/actuator/health` reports `UP`.
-- The documentation site builds with broken links configured to fail the build.
-- The Supabase project's PostgreSQL version, 17.11, was checked in its dashboard for consistency with the local and test database setup.
-
-These checks cover the M1 setup only.
-
-### AI-drafted material not yet fully reviewed
-
-Two drafted items were accepted for M1 but still need a closer review of their reasoning:
-
-- **`.env` import in `application-dev.yml`:** the drafted dev profile imports the `.env` file (`spring.config.import`) instead of relying on exported environment variables. It works and was validated above, but I have not yet decided whether to keep this approach.
-- **ADR-0001 rationale:** the arguments for Flyway over Liquibase, the surrogate key of `CrewAssignment`, and Supabase over other hosts are drafts that I still want to refine in my own words.
+- Which `CHECK` constraints belong in the database and which rules should be enforced only in the service.
+- The demo password, which the seed currently creates in every environment, including production.
+- Whether to retain the second site manager beyond the demo scenario.
