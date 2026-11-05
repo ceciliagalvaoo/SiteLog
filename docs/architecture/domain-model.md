@@ -7,10 +7,11 @@ description: Entities, relations, roles and state machines of SiteLog.
 # Domain model
 
 :::info Status
-Model accepted on 2026-10-31 (milestone M1). The tables are created by Flyway migrations in
-milestone M2; when they land, this page is updated to match the migrations exactly
-(column names, types, constraints). The reasoning behind the mapping is in
-[ADR-0001](../adr/0001-persistence-model.md).
+Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2
+(Flyway `V2`–`V5`); the diagrams below were checked against those migrations on 2026-11-04.
+This page is the logical model; the physical schema (every column, constraint, index and
+trigger) is in [Database schema](./database.md), and the migrations win if the two disagree.
+The reasoning behind the mapping is in [ADR-0001](../adr/0001-persistence-model.md).
 :::
 
 ## Aggregates
@@ -55,18 +56,19 @@ erDiagram
         varchar code UK
         varchar name
         varchar address
+        varchar description "nullable"
         date start_date
         date end_date "nullable"
-        bigint manager_id FK "AppUser, SITE_MANAGER"
+        bigint manager_id FK "NOT NULL, AppUser with role SITE_MANAGER (service check)"
     }
     DAILY_LOG {
         bigint id PK
         bigint site_id FK
         date log_date "unique with site_id"
         varchar status "DRAFT, SIGNED_OFF, REOPENED"
-        int revision "incremented on each approved reopen"
-        varchar weather
-        text notes
+        int revision "default 0, incremented on each approved reopen"
+        varchar weather "nullable: SUNNY, CLOUDY, RAIN, SNOW, WIND, FOG"
+        text notes "nullable"
         bigint signed_off_by FK "AppUser, nullable"
         timestamptz signed_off_at "nullable"
         bigint version "optimistic lock (@Version)"
@@ -75,17 +77,17 @@ erDiagram
         bigint id PK
         bigint daily_log_id FK
         varchar description
-        varchar location
-        time start_time
-        time end_time
+        varchar location "nullable"
+        time start_time "nullable"
+        time end_time "nullable, after start_time"
     }
     CREW_ASSIGNMENT {
         bigint id PK
         bigint work_entry_id FK "unique with crew_id"
         bigint crew_id FK
-        numeric hours_worked
-        int worker_count
-        varchar task
+        numeric hours_worked "numeric 4,2: greater than 0, at most 24"
+        int worker_count "greater than 0"
+        varchar task "nullable"
     }
     CREW {
         bigint id PK
@@ -102,12 +104,12 @@ erDiagram
         varchar title
         text description
         varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
-        varchar category
+        varchar category "fixed list of 10, ck_incident_category"
         varchar status "REPORTED, UNDER_REVIEW, SIGNED_OFF, CLOSED"
-        text root_cause "required for HIGH, CRITICAL"
-        text witnesses "required for HIGH, CRITICAL"
-        text medical_treatment "required for HIGH, CRITICAL"
-        boolean authority_notified "required for HIGH, CRITICAL"
+        text root_cause "nullable, required for HIGH, CRITICAL before sign-off"
+        text witnesses "nullable, required for HIGH, CRITICAL before sign-off"
+        text medical_treatment "nullable, required for HIGH, CRITICAL before sign-off"
+        boolean authority_notified "nullable, required for HIGH, CRITICAL before sign-off"
         bigint reported_by FK "AppUser"
         bigint signed_off_by FK "AppUser, nullable"
         timestamptz signed_off_at "nullable"
@@ -128,7 +130,7 @@ erDiagram
     }
     APP_USER {
         bigint id PK
-        varchar email UK
+        varchar email UK "lower-case"
     }
 ```
 
@@ -152,7 +154,7 @@ erDiagram
     }
     APP_USER {
         bigint id PK
-        varchar email UK "login name"
+        varchar email UK "login name, stored lower-case"
         varchar password_hash "BCrypt"
         varchar full_name
         varchar preferred_language "en or hr, applied at login"
@@ -162,26 +164,26 @@ erDiagram
     LOG_REOPEN_REQUEST {
         bigint id PK
         bigint daily_log_id FK
-        text reason "mandatory"
+        text reason "mandatory, not blank"
         bigint requested_by FK "AppUser"
-        bigint approved_by FK "AppUser, nullable until decided"
-        timestamptz requested_at
+        bigint approved_by FK "AppUser who decided (approve or reject), null while PENDING"
+        timestamptz requested_at "default now()"
         timestamptz decided_at "nullable"
-        varchar status "PENDING, APPROVED, REJECTED"
+        varchar status "PENDING, APPROVED, REJECTED; at most one PENDING per log"
     }
     INCIDENT_DRAFT {
         bigint id PK
         bigint site_id FK
         text shift_note "free text written by the site manager"
-        varchar severity "suggested by the AI"
-        varchar category "suggested by the AI"
-        text affected_crews "suggested by the AI"
-        text immediate_action "suggested by the AI"
+        varchar severity "nullable, suggested by the AI"
+        varchar category "nullable, suggested by the AI"
+        text affected_crews "nullable, suggested by the AI"
+        text immediate_action "nullable, suggested by the AI"
         varchar status "PENDING_REVIEW, NEEDS_MANUAL_INPUT, ACCEPTED, REJECTED"
         bigint created_by FK "AppUser"
         bigint reviewed_by FK "AppUser, nullable"
         bigint incident_id FK "nullable, unique: set on acceptance"
-        timestamptz created_at
+        timestamptz created_at "default now()"
         timestamptz reviewed_at "nullable"
     }
     SITE {
@@ -210,9 +212,12 @@ Entities repeated with only `id` are fully described in the first diagram.
   so services that change a child load the root with `LockModeType.OPTIMISTIC_FORCE_INCREMENT`
   (see [ADR-0001](../adr/0001-persistence-model.md), decision 6).
 - A signed-off log is protected in the database by triggers on `daily_log`, `work_entry` and
-  `crew_assignment`. The child triggers check the **parent** log's status: `INSERT`, `UPDATE`
-  and `DELETE` on `work_entry` / `crew_assignment` fail when the owning `daily_log.status` is
-  `SIGNED_OFF`, and are allowed in `DRAFT` and `REOPENED`. Planned for the M2 migrations.
+  `crew_assignment` (migration `V3`). The child triggers check the **parent** log's status:
+  `INSERT`, `UPDATE` and `DELETE` on `work_entry` / `crew_assignment` fail when the owning
+  `daily_log.status` is `SIGNED_OFF`, and are allowed in `DRAFT` and `REOPENED`. On a
+  `SIGNED_OFF` `daily_log` row the only accepted change is the reopen (`REOPENED`,
+  `revision` + 1, content unchanged); `DELETE` fails. Details in
+  [Database schema](./database.md#locked-daily-logs).
 - An `IncidentDraft` never writes to `incident` by itself; an `Incident` is created only
   when a supervisor accepts the draft (see [Incident draft](#incident-draft-ai-output)).
 
@@ -259,8 +264,9 @@ DAILY_LOG_AUDIT (proposed)
   which is where a hand-written trail (option b) would most likely miss a change.
 - Before/after is obtained by comparing two revisions with `AuditReader`; a `RevisionListener`
   stores the authenticated user on the custom revision entity.
-- The `*_AUD` tables and the revision table are created by Flyway migrations, so the audit schema
-  is explicit and validated like the rest (`ddl-auto=validate`).
+- The `*_aud` tables and the revision table (`revinfo`) are created by Flyway (`V3`), so the
+  audit schema is explicit and validated like the rest (`ddl-auto=validate`); `V5` makes them
+  append-only ([Database schema](./database.md#audit-tables-envers)).
 - The audit works in three layers: `LOG_REOPEN_REQUEST` (why and who approved), a domain
   `@Aspect` (which action happened — sign-off, reopen, incident transitions) and Envers (what
   changed in the data).
