@@ -51,5 +51,7 @@ implemented in milestones M2–M4; each page states what already exists.
 ## Where to go next
 
 - [Domain model](./architecture/domain-model.md) — entities, relations, roles, state machines.
+- [Architecture overview](./architecture/overview.md) — system context, containers, packages, layering rules, profiles, request flows.
 - [ADR-0001 Persistence model](./adr/0001-persistence-model.md) — database, migrations, mapping choices.
+- [ADR-0003 Reopen audit trail](./adr/0003-reopen-audit-trail.md) — how changes to a reopened log are recorded (Hibernate Envers).
 - Source code and `README.md` (how to run): [github.com/ceciliagalvaoo/SiteLog](https://github.com/ceciliagalvaoo/SiteLog).
