@@ -4,6 +4,6 @@
   "link": {
     "type": "generated-index",
     "slug": "/architecture",
-    "description": "Domain model of SiteLog: entities, relations, roles and state machines."
+    "description": "Domain model (entities, relations, roles, state machines) architecture overview (C4 diagrams, layers, profiles, request flows) and physical database schema."
   }
 }
