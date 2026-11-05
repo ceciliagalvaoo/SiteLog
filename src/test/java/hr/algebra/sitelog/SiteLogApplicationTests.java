@@ -6,7 +6,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Arrays;
+import java.util.Comparator;
+
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationInfoService;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,10 +39,17 @@ class SiteLogApplicationTests {
 	}
 
 	@Test
-	void contextLoadsAndAppliesFlywayBaseline() {
-		assertThat(flyway.info().current()).isNotNull();
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
-		assertThat(flyway.info().pending()).isEmpty();
+	void contextLoadsAndAppliesAllFlywayMigrations() {
+		MigrationInfoService info = flyway.info();
+		MigrationVersion latest = Arrays.stream(info.all())
+			.map(MigrationInfo::getVersion)
+			.max(Comparator.naturalOrder())
+			.orElseThrow();
+
+		assertThat(info.pending()).isEmpty();
+		assertThat(info.current()).isNotNull();
+		assertThat(info.current().getVersion()).isEqualTo(latest);
+		assertThat(info.all()).allSatisfy(migration -> assertThat(migration.getState().isFailed()).isFalse());
 	}
 
 	@Test
