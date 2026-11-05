@@ -12,6 +12,8 @@ import type {PluginOptions as DocsPluginOptions} from '@docusaurus/plugin-conten
 // without moving the files. Key: section label; value: position and doc ids (path without .md).
 const rootSections: Record<string, {position: number; docIds: string[]}> = {
   AI: {position: 5, docIds: ['ai-usage', 'ai-evaluation']},
+  // Merged into the existing "Design" folder category (docs/design/_category_.json).
+  Design: {position: 4, docIds: ['design-rationale']},
 };
 
 const repoUrl = 'https://github.com/ceciliagalvaoo/SiteLog';
@@ -44,9 +46,20 @@ const sidebarItemsGenerator: DocsPluginOptions['sidebarItemsGenerator'] = async 
     }
     grouped.get(section)!.push(item);
   }
-  return result.map((item) =>
-    item.type === 'category' && grouped.has(item.label) ? {...item, items: grouped.get(item.label)!} : item,
+  // A section whose label matches a folder category (e.g. "Design") is appended to that category
+  // instead of creating a second one; the placeholder created above is then dropped.
+  const folderLabels = new Set(
+    items.filter((item) => item.type === 'category').map((item) => (item as {label: string}).label),
   );
+  return result
+    .filter((item) => !(item.type === 'category' && folderLabels.has(item.label) && !items.includes(item)))
+    .map((item) => {
+      if (item.type !== 'category' || !grouped.has(item.label)) {
+        return item;
+      }
+      const extra = grouped.get(item.label)!;
+      return items.includes(item) ? {...item, items: [...item.items, ...extra]} : {...item, items: extra};
+    });
 };
 
 const config: Config = {
@@ -150,6 +163,7 @@ const config: Config = {
           items: [
             {label: 'Overview', to: '/'},
             {label: 'Domain model', to: '/architecture/domain-model'},
+            {label: 'Architecture overview', to: '/architecture/overview'},
           ],
         },
         {

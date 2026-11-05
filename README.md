@@ -10,7 +10,10 @@ of Java Applications Using Programming Frameworks*, Algebra Bernays University, 
 
 - **Documentation site:** https://ceciliagalvaoo.github.io/SiteLog/ (built from `docs/` by
   Docusaurus; first publication pending, see [Documentation](#documentation))
-- **Figma prototype:** https://www.figma.com/design/OdFchbgQXPWVLw115Wc3iz/SiteLog
+- **Figma prototype (clickable):** https://www.figma.com/proto/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=20-3626&starting-point-node-id=20%3A3626 ·
+  design file: https://www.figma.com/design/OdFchbgQXPWVLw115Wc3iz/SiteLog
+- **Hi-fi prototype (M2):** [`docs/prototype.pdf`](docs/prototype.pdf) · rationale in
+  [`docs/design-rationale.md`](docs/design-rationale.md)
 - **Wireframes (low-fi, M1):** [`docs/prototype/wireframes.pdf`](docs/prototype/wireframes.pdf) ·
   review in [`docs/design/wireframes.md`](docs/design/wireframes.md)
 
@@ -27,7 +30,7 @@ CorrectiveAction`. Full CRUD on screens and through the REST API.
 
 1. **Lockable daily log.** A daily log locks after sign-off. Changing it afterwards needs a
    reopen request with a mandatory reason, approved by a safety supervisor; every change made while
-   reopened is audited (Hibernate Envers, see the domain model).
+   reopened is audited (Hibernate Envers, see [ADR-0003](docs/adr/0003-reopen-audit-trail.md)).
 2. **Incident severity workflow.** Severities `LOW` · `MEDIUM` · `HIGH` · `CRITICAL`. `HIGH` and
    `CRITICAL` require extra fields (root cause, witnesses, medical treatment, authority notified)
    and a safety supervisor sign-off.
@@ -51,20 +54,24 @@ Domain model, roles and state machines: [`docs/architecture/domain-model.md`](do
 | Milestone | Due | Scope | Status |
 |---|---|---|---|
 | M1 | week 4 (delivered week 5, 2026-11-01) | Domain model, ADR-0001, empty project running with PostgreSQL in Docker, CI, low-fi wireframes, hosting and AI provider chosen | Done |
-| M2 | week 8 (2026-11-22) | Architecture and database design, migrations + seed, parent-child CRUD on screens, hi-fi prototype and component set | Planned |
+| M2 | week 8 (2026-11-22) | Architecture and database design, migrations + seed, parent-child CRUD on screens, hi-fi prototype and component set | In progress |
 | M3 | week 11 (2026-12-13) | Security with all roles, REST API + OpenAPI, audited reopen and severity workflow, AI feature behind a port with stub + evaluation cases, first deployment | Planned |
 | M4 | week 14 (2027-01-03) | Compliance report, test coverage, i18n (en/hr), scheduled jobs, performance measurement, final deployment | Planned |
 | Final | week 15 (2027-01-10) | Everything, including the 10-minute video | Planned |
 
-What exists today (M1):
+What exists today (M1, plus the M2 database):
 
 - Spring Boot application `hr.algebra.sitelog.SiteLogApplication`.
-- Flyway migration `V1__baseline.sql` (baseline only, no domain tables yet);
-  Hibernate runs with `ddl-auto=validate`.
+- Flyway migrations `V1`–`V5`: domain tables with constraints, lock triggers for signed-off
+  daily logs, append-only Envers audit tables and demo data
+  ([database schema](docs/architecture/database.md)). Hibernate runs with `ddl-auto=validate`;
+  JPA entities are not written yet.
 - `/actuator/health` is public; every other URL requires a login. This is a temporary
   `SecurityConfig` (Spring Boot's generated default user); real users and roles arrive in M3.
-- Three integration tests (Testcontainers PostgreSQL 17): context loads with the Flyway baseline,
-  health endpoint is public and `UP`, other pages redirect to the login page.
+- Integration tests (Testcontainers PostgreSQL 17): context loads with no pending Flyway
+  migration, health endpoint is public and `UP`, other pages redirect to the login page; schema
+  constraints, lock triggers, append-only audit triggers and the demo seed
+  (`src/test/java/hr/algebra/sitelog/db/`).
 
 Open items carried over from M1:
 
@@ -169,8 +176,12 @@ npm start          # dev server; `npm run build` fails on broken links
 |---|---|
 | Overview | [`docs/intro.md`](docs/intro.md) |
 | Domain model (Mermaid ER + state diagrams) | [`docs/architecture/domain-model.md`](docs/architecture/domain-model.md) |
+| Architecture overview (C4, layers, profiles, request flows) | [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| Database schema (tables, constraints, triggers, audit tables, demo data) | [`docs/architecture/database.md`](docs/architecture/database.md) |
 | ADR-0001 Persistence model | [`docs/adr/0001-persistence-model.md`](docs/adr/0001-persistence-model.md) |
+| ADR-0003 Reopen audit trail (Hibernate Envers) | [`docs/adr/0003-reopen-audit-trail.md`](docs/adr/0003-reopen-audit-trail.md) |
 | Wireframes and review | [`docs/design/wireframes.md`](docs/design/wireframes.md) |
+| Hi-fi prototype and design rationale | [`docs/prototype.pdf`](docs/prototype.pdf) · [`docs/design-rationale.md`](docs/design-rationale.md) |
 | AI usage log | [`docs/ai-usage.md`](docs/ai-usage.md) |
 
 The site is deployed by `.github/workflows/docs.yml` on pushes to `main` that touch `docs/`. One-time repository setting: *Settings → Pages → Source: GitHub Actions*.
@@ -183,12 +194,12 @@ The site is deployed by `.github/workflows/docs.yml` on pushes to `main` that to
 ├── src/main/resources/
 │   ├── application.yml                 shared settings (ddl-auto=validate, actuator)
 │   ├── application-dev.yml             local PostgreSQL from .env
-│   └── db/migration/                   Flyway migrations (V1__baseline.sql)
-├── src/test/java/hr/algebra/sitelog/   integration tests (Testcontainers)
+│   └── db/migration/                   Flyway migrations V1–V5 (schema, triggers, audit, seed)
+├── src/test/java/hr/algebra/sitelog/   integration tests (Testcontainers; db/ = schema rules)
 ├── docs/                               Docusaurus site and documentation content
 │   ├── intro.md                        overview (site home)
-│   ├── architecture/                   domain model (architecture and database design in M2)
-│   ├── adr/                            architecture decision records
+│   ├── architecture/                   domain model, architecture overview, database schema
+│   ├── adr/                            architecture decision records (0001, 0003)
 │   ├── design/  prototype/             wireframes review and PDF export
 │   ├── ai-usage.md                     AI usage log
 │   └── docusaurus.config.ts, sidebars.ts, src/, static/   site configuration
@@ -212,10 +223,21 @@ The Render free web service sleeps when idle (first request takes longer) and a 
 project pauses after inactivity. Exact behaviour and the wake-up procedure before a demo will be
 documented with the deployment.
 
-### Demo credentials per role — *coming in M3*
+### Demo credentials per role
 
-Roles planned: `ADMIN`, `SITE_MANAGER`, `SAFETY_SUPERVISOR`, `INSPECTOR`. Accounts are seeded by
-Flyway; credentials will be listed here.
+Available once login exists (M3); seeded by Flyway `V4__seed_demo_data.sql` in every
+environment. All accounts share the demo password **`SiteLog-demo-2026`**, which is valid only
+for these `@sitelog.test` demo accounts.
+
+| Role | Email | Sites |
+|---|---|---|
+| `ADMIN` | `admin@sitelog.test` | — |
+| `SITE_MANAGER` | `manager@sitelog.test` | `ZG-01`, `ZG-02` |
+| `SITE_MANAGER` | `manager.split@sitelog.test` | `ST-01` (second manager, to show the own-sites rule) |
+| `SAFETY_SUPERVISOR` | `supervisor@sitelog.test` | — |
+| `INSPECTOR` | `inspector@sitelog.test` | — |
+
+What else the seed contains: [Database schema — Demo data](docs/architecture/database.md#demo-data-v4).
 
 ### HikariCP configuration — *coming in M4*
 
