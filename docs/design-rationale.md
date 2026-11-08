@@ -6,12 +6,13 @@ description: Why the SiteLog high-fidelity prototype looks and behaves the way i
 
 # Design rationale (M2)
 
-:::info Status (2026-11-05, milestone M2)
+:::info Status (2026-11-07, milestone M2, revision 2)
 High-fidelity prototype and component set reviewed against the assignment, the
 [domain model](./architecture/domain-model.md) and the Flyway migrations. The prototype was made
-**before** the Thymeleaf screens. Review findings were corrected in Figma; what the
-implementation refines on top of the prototype is listed in
-[From prototype to implementation](#from-prototype-to-implementation).
+**before** the Thymeleaf screens. Review findings were corrected in Figma; the second revision
+(darker text palette, date and time controls, expanded component set) is described in
+[Design evolution: revision 2](#design-evolution-revision-2). What the implementation refines on
+top of the prototype is listed in [From prototype to implementation](#from-prototype-to-implementation).
 :::
 
 - **Figma prototype (presentation mode, starts at Flow 1 – Sites):**
@@ -58,8 +59,15 @@ The tokens below are the values measured in the exported prototype; they become 
 | `--color-sidebar` | `#1C1816` | Sidebar and mobile header background (warm near-black) |
 | `--color-bg` | `#F4F4F4` | Page background |
 | `--color-surface` | `#FFFFFF` | Cards, tables, inputs |
-| `--color-text` | `#16211D` | Headings and body text |
-| `--color-text-muted` | `#56665F` | Secondary text and field labels (darkened from the prototype, see the contrast check) |
+| `--color-field` | `#FBFBFB` | Input, select and textarea background |
+| `--color-text` | `#16211D` | Headings |
+| `--color-text-body` | `#21312B` | Body text and strong table cells |
+| `--color-text-field` | `#283633` | Value typed into a field |
+| `--color-text-label` | `#4F605B` | Field labels and crew-row column labels |
+| `--color-text-muted` | `#54625D` | Secondary text and table cells |
+| `--color-text-eyebrow` | `#5D6B67` | Uppercase eyebrow labels and table headers (implementation value, see the contrast check) |
+| `--color-placeholder` | `#677572` | Placeholders, including `dd/mm/yyyy` and `--:--` |
+| `--color-success-text` | `#167059` | "+ Add another crew" and other additive links |
 | `--color-error` | `#991B1B` | Validation messages, error borders |
 
 Orange was chosen because it is the colour of safety signage and high-visibility clothing on
@@ -77,26 +85,36 @@ at 1440); the implementation raises it to a 14 px base and 12 px minimum (chips,
 readability on site tablets, keeping the same hierarchy. Spacing follows a 4 px grid (`--space-1`
 = 4 px … `--space-6` = 32 px).
 
+Column labels inside the crew assignment rows (Crew, Hours, Workers, Task) are sentence-case
+semibold labels, the same style as every other field label, rather than tiny uppercase captions:
+they are form labels, and on a phone they are the only thing that tells the fields apart. Uppercase
+letter-spaced text is kept for eyebrows, table headers and chips.
+
 ## Components and variants
 
 The `Components` page holds the reusable set (component sets drawn with the dashed purple
-outline in Figma). Each one maps to a Thymeleaf fragment in `templates/fragments/`.
+outline in Figma), in eight numbered sections. Each one maps to a Thymeleaf fragment in
+`templates/fragments/`.
 
-| Component | Variants | Fragment |
-|---|---|---|
-| Button | primary / secondary / danger × default / disabled | `button` |
-| Text input | default / focused / error (message below) | `input` |
-| Select, Textarea | default | `input` (select, textarea) |
-| Table row | header, default, hover | `table-row` |
-| Daily log status chip | Draft / Signed off / Reopened | `chip` |
-| Incident status chip | Reported / Under review / Signed off / Closed | `chip` |
-| Corrective action status chip | Open / Done / Overdue | `chip` |
-| Severity chip | Low / Medium / High / Critical | `chip` |
-| Flash message | success / error / info, dismissible | `flash` |
-| Crew assignment row | Crew, Hours worked, Worker count, Task, remove | `crew-row` |
-| Toggle | on / off (user and crew Active) | `toggle` |
-| Modal | default / with validation error | `modal` |
-| Sidebar navigation, notification bell and panel | used on every desktop screen | `navbar`, `notifications` |
+| Section | Component | Variants | Fragment |
+|---|---|---|---|
+| 00 Icons | Chevron, calendar, clock | — (used by select, date and time controls) | `icon` (sprite `static/img/icons.svg`) |
+| 01 Actions | Button | primary / secondary / danger × default / hover / disabled | `button` |
+| 02 Form controls | Text input, select, date input, textarea | default (placeholder) / filled / error (message below) / focused / disabled | `input` (`textField`, `selectField`, `enumSelectField`, `textareaField`) |
+| 02 Form controls | Checkbox | checked / unchecked | `input` (`checkboxField`) |
+| 03 Data table | Header cell, body cell, row | cell: muted / strong / accent (record link) / chip; row default and hover | `table-row` |
+| 04 Status chips | Chip | 12 colour variants (neutral, teal, green, amber, blue, yellow, orange, red, cyan, grey, lavender, purple) | `chip` |
+| 04 Status chips | Chip families | Daily log status, Incident status, Corrective action status, Severity, User status, User role, Site status, Assisted report status | `chip` (`status(family, value)`) |
+| 05 Feedback | Flash message | success / info / error, dismissible | `flash` |
+| 06 Crew assignment row | Cell, row, crew group | cell: input / select; row with remove "×"; group with column labels and "+ Add another crew" | daily log form (M2-09), built from `input` + `button` |
+| 07 Toggles and modal | Toggle | on / off (user and crew Active) | `toggle` |
+| 07 Toggles and modal | Modal | one instance (corrective action); its error state is drawn on the screens (pp. 7 and 21) | `modal` |
+| Screens | Sidebar navigation, user menu, notification bell and panel | used on every desktop screen | `navbar`, `notifications` |
+
+The second revision turned several one-off drawings into real variants: the date input and the
+textarea now have the same five states as the text input, the button set gained an explicit hover
+state, and the chips are one component with colour variants instead of separate drawings per
+family, which is also how the CSS is organised (`.chip--<family>-<value>` mapped to a colour).
 
 ## Accessibility: WCAG AA contrast check
 
@@ -110,24 +128,44 @@ information and the colour only reinforces it.
 | Primary button | `#FFFFFF` | `#C1410C` | 5.21 | Pass |
 | Danger button | `#FFFFFF` | `#B91C1C` | 6.52 | Pass |
 | Secondary button | `#282423` | `#FFFFFF` | 15.36 | Pass |
-| Chip Draft | `#44403C` | `#F4F4F4` | 9.45 | Pass |
-| Chip Signed off / Done | `#14532D` | `#DCFCE7` | 8.34 | Pass |
-| Chip Reopened / High | `#9A3412` | `#FFEDD5` | 6.37 | Pass |
-| Chip Reported / Open | `#1E3A8A` | `#DBEAFE` | 8.46 | Pass |
-| Chip Under review / Medium | `#713F12` | `#FEF3C7` | 7.76 | Pass |
-| Chip Closed | `#3F3F46` | `#E4E4E7` | 8.23 | Pass |
+| Chip Draft | `#4F605B` | `#F2F6F4` | 6.10 | Pass |
+| Chip Signed off (daily log), Active | `#167059` | `#E8F6F2` | 5.40 | Pass |
+| Chip Signed off (incident) / Done | `#14532D` | `#DCFCE7` | 8.34 | Pass |
+| Chip Reopened | `#9C5918` | `#FFF6E6` | 5.08 | Pass |
+| Chip High | `#9A3412` | `#FFEDD5` | 6.37 | Pass |
+| Chip Reported / Open / Site Manager | `#1E3A8A` | `#DBEAFE` | 8.46 | Pass |
+| Chip Under review / Medium / Safety Supervisor | `#713F12` | `#FEF3C7` | 7.76 | Pass |
+| Chip Closed / Inactive | `#3F3F46` | `#E4E4E7` | 8.23 | Pass |
 | Chip Overdue / Critical | `#7F1D1D` | `#FEE2E2` | 8.29 | Pass |
 | Chip Low | `#164E63` | `#CFFAFE` | 8.20 | Pass |
+| Chip Admin | `#581C87` | `#F3E8FF` | 9.25 | Pass |
+| Chip AI draft | `#5E4BAA` | `#F2EFFF` | 6.06 | Pass |
 | Flash success title | `#14532D` | `#F0FDF4` | 8.81 | Pass |
+| Flash info title | `#1E3A8A` | `#EFF6FF` | 9.56 | Pass |
+| Flash error title | `#7F1D1D` | `#FEF2F2` | 9.26 | Pass |
 | Validation message | `#991B1B` | `#FFFFFF` | 8.34 | Pass |
-| Breadcrumb link | `#9A3412` | `#F4F4F4` | 6.65 | Pass |
+| Breadcrumb link / record link in tables | `#9A3412` | `#F4F4F4` / `#FFFFFF` | 6.65 / 7.31 | Pass |
 | Heading | `#16211D` | `#F4F4F4` | 15.04 | Pass |
+| Field value | `#283633` | `#FBFBFB` | 12.18 | Pass |
+| Field label | `#4F605B` | `#FFFFFF` | 6.65 | Pass (revision 1: `#678077`, 4.26) |
+| Placeholder (incl. `dd/mm/yyyy`) | `#677572` | `#FBFBFB` | 4.65 | Pass (revision 1: `#929997`, 2.81) |
+| Table cell (muted) | `#54625D` | `#FFFFFF` | 6.40 | Pass |
+| Table header | `#64726E` | `#F6F9F8` | 4.75 | Pass |
+| "+ Add another crew" | `#167059` | `#FFFFFF` | 6.01 | Pass |
 | Sidebar item | `#A8BCB6` | `#1C1816` | 8.84 | Pass |
+| Sidebar company name | `#85A099` | `#1C1816` | 6.28 | Pass |
 | Sidebar section label | `#6E8A83` | `#1C1816` | 4.72 | Pass |
-| Muted text (prototype) | `#70807C` | `#F4F4F4` | 3.77 | **Fail** → `#56665F` = 5.52 |
-| Field label (prototype) | `#678077` | `#FFFFFF` | 4.26 | **Fail** → `#56665F` = 6.07 |
-| Placeholder (prototype) | `#929997` | `#FBFBFB` | 2.81 | **Fail** → `#6B7280` = 4.67 |
+| Page lead text (prototype) | `#70807C` | `#F4F4F4` | 3.77 | **Fail** → `#54625D` = 5.82 |
+| Card subtitle (prototype) | `#7B8985` | `#FFFFFF` | 3.65 | **Fail** → `#54625D` = 6.40 |
+| Eyebrow label (prototype) | `#678077` | `#F4F4F4` | 3.87 | **Fail** → `#5D6B67` = 5.07 |
+| Record code next to the eyebrow (prototype) | `#899591` | `#F4F4F4` | 2.82 | **Fail** → `#5D6B67` = 5.07 |
+| Modal subtitle (prototype) | `#70807C` | `#FFFFFF` | 4.14 | **Fail** → `#54625D` = 6.40 |
 | Disabled button | `#77706B` | `#E6E4E4` | 3.84 | Exempt (inactive control) |
+
+Revision 2 fixed the two failures that matter most while filling in a form — field labels and
+placeholders now pass in Figma — and darkened the sidebar, field values and table text. What still
+fails in the prototype is secondary text (page leads, card subtitles, eyebrows, the modal
+subtitle): the implementation does not copy those greys and uses the two muted tokens above instead.
 
 Severity is the one place where colour is semantically loaded. The four severity chips use four
 distinct hues (cyan, yellow, orange, red) so they can be told apart, and each still has its text
@@ -142,8 +180,7 @@ the form, buttons and links with text (no icon-only actions except the remove "�
 
 The interface ships in English and Croatian, and Croatian labels are typically 20–40 % longer
 ("Save changes" → "Spremi promjene", "Worker count" → "Broj radnika", "End date of corrective
-action" → "Datum završetka korektivne radnje"). The component set shows both languages side by
-side: buttons hug their label, form labels wrap above the control instead of truncating, and
+action" → "Datum završetka korektivne radnje"). The component set is built for that: buttons hug their label, form labels wrap above the control instead of truncating, and
 crew-row columns have a minimum width rather than a fixed one. No text is placed in fixed-width
 boxes, so the CSS uses `min-width`, wrapping and flex/grid instead of fixed widths.
 
@@ -201,6 +238,10 @@ The texts in the prototype are the real messages; they are copied unchanged into
 `Email is already used` · `Name is already used` · `Hours worked must be between 0 and 24`
 (from the brief; to be drawn on a crew row).
 
+They live under `validation.*` keys (for example `validation.dailyLog.date.required`); the form
+summaries drawn on the screens ("Daily log could not be saved — Complete the date and at least one
+work entry.") live under `*.form.error.*`.
+
 ## What changed from the wireframes
 
 | Wireframes (M1, rev. 3) | High fidelity (M2) | Reason |
@@ -225,6 +266,21 @@ The texts in the prototype are the real messages; they are copied unchanged into
 - **No temperature, no shift supervisor, no priority, no incident location**: the domain model
   prevails (decided in the wireframe review).
 
+## Design evolution: revision 2
+
+A second pass over the screens (7 Nov 2026) kept every layout and the 46-page structure and
+changed the details that matter on a site tablet:
+
+| Area | Change | Pages |
+|---|---|---|
+| Text palette | Darker greys everywhere: field values `#283633`, labels `#4F605B`, placeholders `#677572`, table text `#54625D`, sidebar items `#A8BCB6`, active sidebar item white | all |
+| Date and time fields | Date inputs show the `dd/mm/yyyy` placeholder with a calendar icon, time inputs `--:--` with a clock icon | 2, 3, 9, 14, 16–18, 20–21, 30, 34 |
+| Crew rows | Column labels Crew / Hours / Workers / Task became normal field labels (larger, sentence case) | 2, 3, 9 |
+| Log summary | The work entry count matches the entries on the form | 2, 3 |
+| Notifications | The open bell is highlighted and each notification type has its own colour marker | 43, 44 |
+| Mobile | Stronger text and the same date/time controls | 11–14 |
+| Components | Icons section; hover state on buttons; five states for every form control; checkbox; chip as one component with 12 colour variants and four new families (User status, User role, Site status, Assisted report status); crew row split into cells, row and group; single modal instance | 45 |
+
 ## From prototype to implementation
 
 Design and model evolved together. The M2 review compared every frame with the migrations and
@@ -247,7 +303,8 @@ other way:
 | Navigation by role | Every frame shows the full sidebar, including the *Admin* group | The *Admin* group and admin actions are rendered only for the Admin (`sec:authorize`) | Each frame shows one screen; the template adapts to the signed-in role |
 | Workflow actions | Incident detail shows Start review, Sign off and Close together | Only the next valid action for the status and role | Actions follow the severity workflow (AR2) |
 | Change password | My profile shows the account fields | A *Change password* section is added to the profile (M3) | Users created by the Admin must replace their initial password |
-| Contrast | Secondary grey text `#70807C` (3.77:1), placeholders (2.81:1) | `#56665F` (5.5:1) and `#6B7280` | WCAG AA — see [contrast check](#accessibility-wcag-aa-contrast-check) |
+| Contrast | Labels and placeholders pass since revision 2; page leads, card subtitles and eyebrows still use light greys (2.8–4.1:1) | All secondary text uses `#54625D` (5.8–6.4:1) or `#5D6B67` (≥ 5.07:1) | WCAG AA — see [contrast check](#accessibility-wcag-aa-contrast-check) |
+| Date and time inputs | Drawn as text fields with `dd/mm/yyyy` / `--:--` and an icon | Native `type="date"` / `type="time"`: the browser shows the format and picker of the user's locale | Right keyboard and picker on phones; the value is sent as ISO and bound to `LocalDate` / `LocalTime` |
 | Type size | 10–12 px body text at 1440 | 14 px base, 12 px minimum | Readability on site tablets |
 | Data | Illustrative sites and people ("Riverside Tower") | Seed data (ZG-01 Lanište, ZG-02 Radnička, ST-01 Hotel Žnjan) | The demo runs on the real seed |
 
@@ -278,7 +335,7 @@ per screen, is the Figma frame → template table in the README.
 | 36–39 | Users list, detail, form, form error | `admin/user/list.html`, `detail.html`, `form.html` |
 | 40–42 | Crews list, form, form error | `crew/list.html`, `crew/form.html` |
 | 43–44 | Notifications panel, empty | `fragments/notifications` |
-| 45 | Component set | `fragments/*`, `static/css/app.css` |
+| 45 | Component set | `fragments/*`, `static/css/app.css`, `static/img/icons.svg` |
 
 ## Clickable flow
 
