@@ -8,8 +8,7 @@ spring:
     url: jdbc:postgresql://localhost:${DB_PORT}/${POSTGRES_DB}
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
-    hikari:
-      maximum-pool-size: 5
+    # Pool settings (HikariCP) are in application.yml and shared by every profile.
 
 server:
   error:

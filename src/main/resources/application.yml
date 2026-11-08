@@ -1,11 +1,45 @@
 spring:
   application:
     name: SiteLog
+  messages:
+    # messages.properties (en) / messages_hr.properties; an unsupported browser language falls
+    # back to English (the default bundle), never to the server's system locale.
+    basename: messages
+    fallback-to-system-locale: false
+  datasource:
+    hikari:
+      # Explicit pool settings (not the HikariCP defaults of 10 connections). Production goes
+      # through the Supabase Supavisor pooler in session mode: every Hikari connection holds one
+      # server connection, and the free plan's pool is small (pool size 15 on the Nano compute,
+      # see Database > Settings in the Supabase dashboard; counted per
+      # database/user, shared with the Supabase dashboard and any other client). 5 connections
+      # leave headroom and are more than enough for one Render instance: requests are short
+      # transactions, the scheduled jobs run one at a time (ShedLock), and open-in-view is off,
+      # so a connection is never held while a page renders. Override with DB_POOL_SIZE.
+      pool-name: sitelog-pool
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      # Keep two warm connections; the free Render instance serves little traffic.
+      minimum-idle: 2
+      # Fail fast (10 s instead of 30 s) when the pool is exhausted or Supabase is paused, so the
+      # request returns an error instead of hanging.
+      connection-timeout: 10000
+      # Release idle connections after 5 min, back down to minimum-idle.
+      idle-timeout: 300000
+      # Recycle every connection after 25 min, before the pooler or a network device drops it
+      # silently (HikariCP recommends a value a few minutes below any infrastructure timeout).
+      max-lifetime: 1500000
+      # Validate idle connections every 4 min so a connection closed by the pooler is replaced
+      # before a request gets it.
+      keepalive-time: 240000
   jpa:
     open-in-view: false
     hibernate:
       # Schema is owned by Flyway; Hibernate only checks that entities match it.
       ddl-auto: validate
+    properties:
+      # Envers (ADR-0003): only inserts audit rows. ValidityAuditStrategy would UPDATE the previous
+      # audit row (REVEND), which the V5 append-only triggers reject.
+      org.hibernate.envers.audit_strategy: org.hibernate.envers.strategy.internal.DefaultAuditStrategy
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -24,3 +58,12 @@ management:
   endpoint:
     health:
       show-details: never
+
+sitelog:
+  # Dates such as "today's log" and "overdue" are computed in the sites' time zone, not the
+  # server's (Render runs in UTC).
+  time-zone: Europe/Zagreb
+  current-user:
+    # Milestone M2 only: no real login of domain users yet, so services act as this seed user
+    # (ConfiguredCurrentUserProvider). Removed in M3 when Spring Security provides the user.
+    email: manager@sitelog.test
