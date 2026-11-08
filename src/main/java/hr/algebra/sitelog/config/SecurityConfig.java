@@ -19,6 +19,8 @@ public class SecurityConfig {
 		http
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+				// static assets of the layout (also needed by the login page)
+				.requestMatchers("/css/**", "/js/**", "/img/**", "/favicon.ico").permitAll()
 				.anyRequest().authenticated())
 			.formLogin(Customizer.withDefaults());
 		return http.build();
