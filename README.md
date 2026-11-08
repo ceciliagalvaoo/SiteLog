@@ -76,8 +76,6 @@ What exists today (M1, plus the M2 database):
 Open items carried over from M1:
 
 - Replace the temporary `SecurityConfig` with real users and roles (M3).
-- Review the `.env` import in the `dev` profile and refine the ADR-0001 rationale (see the
-  [AI usage log](docs/ai-usage.md#ai-drafted-material-not-yet-fully-reviewed)).
 
 ## Technology choices
 
