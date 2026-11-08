@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<body>
+<!--/*
+  Navigation chrome (Figma: "Sidebar navigation", top bar, mobile header and bottom tab bar).
+
+  Model attributes (all optional):
+    currentUser       - object with fullName and initials (e.g. a CurrentUserView record);
+                        when absent the login name from the security context is shown
+    openIncidentCount - Number, badge on "Incidents" (hidden when null or 0)
+    contextTitle      - String shown in the top bar / mobile header (current site name)
+
+  Roles are read with sec:authorize: hasRole('ADMIN') shows the Admin group. Hiding a link is
+  only cosmetic - the URL rules and @PreAuthorize on the services are the real protection.
+*/-->
+
+<!-- ============================================================ desktop sidebar -->
+<aside th:fragment="sidebar(active)" class="sidebar" th:aria-label="#{nav.label}">
+	<a class="brand" th:href="@{/sites}" href="/sites">
+		<span class="brand__mark" aria-hidden="true">S</span>
+		<span>
+			<span class="brand__name" th:text="#{app.name}">SiteLog</span>
+			<span class="brand__tagline" th:text="#{app.tagline}">Site logs and safety</span>
+		</span>
+	</a>
+
+	<nav class="sidebar__nav">
+		<p class="nav-section" th:text="#{nav.workspace}">Workspace</p>
+		<ul class="nav-list">
+			<li>
+				<a class="nav-link" th:href="@{/sites}" href="/sites" th:aria-current="${active == 'sites'} ? 'page'">
+					<svg th:replace="~{fragments/icon :: icon('sites')}"></svg>
+					<span th:text="#{nav.sites}">Sites</span>
+				</a>
+			</li>
+			<li>
+				<a class="nav-link" th:href="@{/incidents}" href="/incidents" th:aria-current="${active == 'incidents'} ? 'page'">
+					<svg th:replace="~{fragments/icon :: icon('incidents')}"></svg>
+					<span th:text="#{nav.incidents}">Incidents</span>
+					<span class="nav-link__badge"
+					      th:if="${openIncidentCount != null and openIncidentCount > 0}"
+					      th:text="${openIncidentCount}"
+					      th:title="#{nav.incidents.open(${openIncidentCount})}">4</span>
+				</a>
+			</li>
+			<li>
+				<a class="nav-link" th:href="@{/assisted-reporting}" href="/assisted-reporting" th:aria-current="${active == 'assist'} ? 'page'">
+					<svg th:replace="~{fragments/icon :: icon('assist')}"></svg>
+					<span th:text="#{nav.assistedReporting}">Assisted reporting</span>
+				</a>
+			</li>
+			<li>
+				<a class="nav-link" th:href="@{/reports/compliance}" href="/reports/compliance" th:aria-current="${active == 'compliance'} ? 'page'">
+					<svg th:replace="~{fragments/icon :: icon('compliance')}"></svg>
+					<span th:text="#{nav.compliance}">Compliance</span>
+				</a>
+			</li>
+		</ul>
+
+		<th:block sec:authorize="hasRole('ADMIN')">
+			<p class="nav-section" th:text="#{nav.admin}">Admin</p>
+			<ul class="nav-list">
+				<li>
+					<a class="nav-link" th:href="@{/admin/users}" href="/admin/users" th:aria-current="${active == 'users'} ? 'page'">
+						<svg th:replace="~{fragments/icon :: icon('users')}"></svg>
+						<span th:text="#{nav.users}">Users</span>
+					</a>
+				</li>
+				<li>
+					<a class="nav-link" th:href="@{/crews}" href="/crews" th:aria-current="${active == 'crews'} ? 'page'">
+						<svg th:replace="~{fragments/icon :: icon('crews')}"></svg>
+						<span th:text="#{nav.crews}">Crews</span>
+					</a>
+				</li>
+			</ul>
+		</th:block>
+	</nav>
+
+	<details th:replace="~{fragments/navbar :: userMenu}"></details>
+</aside>
+
+<!-- ============================================================ user menu (profile, EN / HR, log out) -->
+<details th:fragment="userMenu" class="user-menu" sec:authorize="isAuthenticated()"
+         th:with="displayName=${currentUser != null ? currentUser.fullName : #authentication.name},
+                  initials=${currentUser != null ? currentUser.initials : #strings.toUpperCase(#strings.substring(#authentication.name, 0, 1))}">
+	<summary th:aria-label="#{user.menu}">
+		<span class="avatar" aria-hidden="true" th:text="${initials}">AM</span>
+		<span class="user-menu__who">
+			<span class="user-menu__name" th:text="${displayName}">Alex Morgan</span>
+			<span class="user-menu__role" th:insert="~{fragments/navbar :: roleName}">Site Manager</span>
+		</span>
+		<svg th:replace="~{fragments/icon :: icon('more')}"></svg>
+	</summary>
+	<div class="user-menu__panel">
+		<a class="menu-item" th:href="@{/account/profile}" href="/account/profile">
+			<svg th:replace="~{fragments/icon :: icon('user')}"></svg>
+			<span th:text="#{user.profile}">View profile</span>
+		</a>
+		<p class="menu-label" th:text="#{lang.label}">Language</p>
+		<div th:replace="~{fragments/navbar :: langSwitch}"></div>
+		<form th:action="@{/logout}" action="/logout" method="post">
+			<button type="submit" class="menu-item">
+				<svg th:replace="~{fragments/icon :: icon('logout')}"></svg>
+				<span th:text="#{user.logout}">Log out</span>
+			</button>
+		</form>
+	</div>
+</details>
+
+<!-- the signed-in user's role, one role per user -->
+<th:block th:fragment="roleName">
+	<th:block sec:authorize="hasRole('ADMIN')" th:text="#{role.ADMIN}">Admin</th:block>
+	<th:block sec:authorize="hasRole('SITE_MANAGER')" th:text="#{role.SITE_MANAGER}">Site Manager</th:block>
+	<th:block sec:authorize="hasRole('SAFETY_SUPERVISOR')" th:text="#{role.SAFETY_SUPERVISOR}">Safety Supervisor</th:block>
+	<th:block sec:authorize="hasRole('INSPECTOR')" th:text="#{role.INSPECTOR}">Inspector</th:block>
+</th:block>
+
+<!-- language switcher: ?lang=xx is read by the LocaleChangeInterceptor and stored in a cookie -->
+<div th:fragment="langSwitch" class="lang-switch" role="group" th:aria-label="#{lang.label}">
+	<a href="?lang=en" hreflang="en" lang="en"
+	   th:aria-current="${#locale.language == 'en'} ? 'true'"
+	   th:title="#{lang.en}">EN</a>
+	<a href="?lang=hr" hreflang="hr" lang="hr"
+	   th:aria-current="${#locale.language == 'hr'} ? 'true'"
+	   th:title="#{lang.hr}">HR</a>
+</div>
+
+<!-- ============================================================ desktop top bar -->
+<header th:fragment="topbar" class="topbar">
+	<span class="topbar__context" th:text="${contextTitle}">Riverside Tower</span>
+	<details th:replace="~{fragments/notifications :: bell}"></details>
+</header>
+
+<!-- ============================================================ mobile header (390 px frames) -->
+<header th:fragment="mobileHeader" class="mobile-header">
+	<a class="brand" th:href="@{/sites}" href="/sites" th:aria-label="#{app.name}">
+		<span class="brand__mark" aria-hidden="true">S</span>
+	</a>
+	<span class="mobile-header__context" th:text="${contextTitle}">Riverside Tower</span>
+	<details th:replace="~{fragments/notifications :: bell}"></details>
+	<a class="avatar" sec:authorize="isAuthenticated()" th:href="@{/account/profile}" href="/account/profile"
+	   th:aria-label="#{user.profile}"
+	   th:text="${currentUser != null ? currentUser.initials : #strings.toUpperCase(#strings.substring(#authentication.name, 0, 1))}">AM</a>
+</header>
+
+<!-- ============================================================ mobile bottom tab bar -->
+<nav th:fragment="tabbar(active)" class="tabbar" th:aria-label="#{nav.label}">
+	<a th:href="@{/sites}" href="/sites" th:aria-current="${active == 'sites'} ? 'page'">
+		<svg th:replace="~{fragments/icon :: icon('sites')}"></svg>
+		<span th:text="#{nav.sites}">Sites</span>
+	</a>
+	<a th:href="@{/incidents}" href="/incidents" th:aria-current="${active == 'incidents'} ? 'page'">
+		<svg th:replace="~{fragments/icon :: icon('incidents')}"></svg>
+		<span th:text="#{nav.incidents}">Incidents</span>
+	</a>
+	<a th:href="@{/assisted-reporting}" href="/assisted-reporting" th:aria-current="${active == 'assist'} ? 'page'">
+		<svg th:replace="~{fragments/icon :: icon('assist')}"></svg>
+		<span th:text="#{nav.assist.short}">Assist</span>
+	</a>
+	<a th:href="@{/reports/compliance}" href="/reports/compliance" th:aria-current="${active == 'compliance'} ? 'page'">
+		<svg th:replace="~{fragments/icon :: icon('compliance')}"></svg>
+		<span th:text="#{nav.reports.short}">Reports</span>
+	</a>
+</nav>
+</body>
+</html>

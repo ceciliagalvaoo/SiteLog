@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<!--/*
+  Base layout for every signed-in screen (Figma: desktop frame with sidebar + top bar,
+  mobile frame with dark header + bottom tab bar). Plain Thymeleaf fragments, no layout dialect.
+
+  Usage in a page template:
+    <html th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+      <head><title th:text="#{site.list.title}">Sites</title></head>
+      <body><div id="content"> ... page ... </div></body>
+    </html>
+
+  Parameters
+    title   - the page's <title> element (fragment expression)
+    content - the page body (fragment expression), rendered inside <main>
+    active  - key of the current navigation item: sites | incidents | assist | compliance |
+              users | crews | profile | notifications (or '' for none)
+
+  Optional model attributes read here (all may be absent):
+    contextTitle    - String shown at the left of the top bar / in the mobile header (e.g. the site name)
+    flashSuccess, flashError, flashInfo, flashDetail, flashArgs - see fragments/flash.html
+    notifications, unreadCount - see fragments/notifications.html
+    openIncidentCount, currentUser - see fragments/navbar.html
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:fragment="layout(title, content, active)"
+      th:lang="${#locale.language}">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title th:replace="${title}">SiteLog</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;display=swap">
+	<link rel="stylesheet" th:href="@{/css/app.css}" href="/css/app.css">
+	<script th:src="@{/js/app.js}" src="/js/app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main" th:text="#{layout.skipToContent}">Skip to content</a>
+
+<header th:replace="~{fragments/navbar :: mobileHeader}"></header>
+
+<div class="app">
+	<aside th:replace="~{fragments/navbar :: sidebar(${active})}"></aside>
+
+	<div class="app__main">
+		<header th:replace="~{fragments/navbar :: topbar}"></header>
+
+		<main id="main" class="page" tabindex="-1">
+			<div th:replace="~{fragments/flash :: messages}"></div>
+			<th:block th:replace="${content}"></th:block>
+		</main>
+	</div>
+</div>
+
+<nav th:replace="~{fragments/navbar :: tabbar(${active})}"></nav>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Form controls (Figma: "Form controls" - text input, select, date, textarea x
+  default / filled / error / focused / disabled, and the checkbox).
+  Must be used INSIDE a <form th:object="${someForm}">: th:field binds the property, keeps the
+  submitted value after a validation error and adds name/id; th:errors prints the message from
+  messages.properties. Focus and hover are CSS states; the error state comes from the
+  BindingResult (#fields.hasErrors).
+
+  field       - property path as a string, also nested: 'date', 'workEntries[0].description'
+  label       - resolved text (#{...})
+  type        - text | email | number | date | time | password
+  placeholder - resolved text or null
+  required    - true adds the "*" marker and the HTML required attribute
+
+  textField(field, label, type, placeholder, required)
+  textareaField(field, label, placeholder, required)
+  selectField(field, label, items, valueProperty, labelProperty, emptyLabel, required)
+      items: list of objects (e.g. crews), valueProperty/labelProperty: their property names ('id', 'name')
+  enumSelectField(field, label, values, messagePrefix, emptyLabel, required)
+      values: enum constants (e.g. ${T(...).values()} is not allowed - pass them from the model),
+      option text = #{messagePrefix + '.' + VALUE}, e.g. 'weather' -> weather.CLOUDY
+  checkboxField(field, label)
+
+  Fragment names end in "Field" on purpose: a selector like "select" would also match every
+  <select> element of this file.
+  The element id is th:field's id (brackets removed), so <label for> and aria-describedby match.
+*/-->
+
+<div th:fragment="textField(field, label, type, placeholder, required)" class="field"
+     th:with="fid=${#strings.replace(#strings.replace(field, '[', ''), ']', '')}, hasError=${#fields.hasErrors(field)}"
+     th:classappend="${hasError} ? 'field--error'">
+	<label class="field__label" th:for="${fid}">
+		<span th:text="${label}">Incident title</span><span class="field__req" th:if="${required}" aria-hidden="true">*</span>
+	</label>
+	<input class="control" th:type="${type}" th:field="*{__${field}__}"
+	       th:placeholder="${placeholder}" th:required="${required}"
+	       th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? ${fid + '-error'}">
+	<p class="field__error" th:if="${hasError}" th:id="${fid + '-error'}" th:errors="*{__${field}__}">Title is required</p>
+</div>
+
+<div th:fragment="textareaField(field, label, placeholder, required)" class="field"
+     th:with="fid=${#strings.replace(#strings.replace(field, '[', ''), ']', '')}, hasError=${#fields.hasErrors(field)}"
+     th:classappend="${hasError} ? 'field--error'">
+	<label class="field__label" th:for="${fid}">
+		<span th:text="${label}">Description</span><span class="field__req" th:if="${required}" aria-hidden="true">*</span>
+	</label>
+	<textarea class="control" rows="4" th:field="*{__${field}__}"
+	          th:placeholder="${placeholder}" th:required="${required}"
+	          th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? ${fid + '-error'}"></textarea>
+	<p class="field__error" th:if="${hasError}" th:id="${fid + '-error'}" th:errors="*{__${field}__}">Description is required</p>
+</div>
+
+<div th:fragment="selectField(field, label, items, valueProperty, labelProperty, emptyLabel, required)" class="field"
+     th:with="fid=${#strings.replace(#strings.replace(field, '[', ''), ']', '')}, hasError=${#fields.hasErrors(field)}"
+     th:classappend="${hasError} ? 'field--error'">
+	<label class="field__label" th:for="${fid}">
+		<span th:text="${label}">Crew</span><span class="field__req" th:if="${required}" aria-hidden="true">*</span>
+	</label>
+	<select class="control" th:field="*{__${field}__}" th:required="${required}"
+	        th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? ${fid + '-error'}">
+		<option th:if="${emptyLabel != null}" value="" th:text="${emptyLabel}">Select crew</option>
+		<option th:each="item : ${items}"
+		        th:value="${item.__${valueProperty}__}"
+		        th:text="${item.__${labelProperty}__}">Concrete crew A</option>
+	</select>
+	<p class="field__error" th:if="${hasError}" th:id="${fid + '-error'}" th:errors="*{__${field}__}">Select a crew</p>
+</div>
+
+<div th:fragment="enumSelectField(field, label, values, messagePrefix, emptyLabel, required)" class="field"
+     th:with="fid=${#strings.replace(#strings.replace(field, '[', ''), ']', '')}, hasError=${#fields.hasErrors(field)}"
+     th:classappend="${hasError} ? 'field--error'">
+	<label class="field__label" th:for="${fid}">
+		<span th:text="${label}">Weather</span><span class="field__req" th:if="${required}" aria-hidden="true">*</span>
+	</label>
+	<select class="control" th:field="*{__${field}__}" th:required="${required}"
+	        th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? ${fid + '-error'}">
+		<option th:if="${emptyLabel != null}" value="" th:text="${emptyLabel}">Select weather</option>
+		<option th:each="value : ${values}" th:value="${value}"
+		        th:text="#{${messagePrefix + '.' + value}}">Cloudy</option>
+	</select>
+	<p class="field__error" th:if="${hasError}" th:id="${fid + '-error'}" th:errors="*{__${field}__}">Select Yes or No</p>
+</div>
+
+<div th:fragment="checkboxField(field, label)" class="field">
+	<label class="check">
+		<input type="checkbox" th:field="*{__${field}__}">
+		<span th:text="${label}">Keep me signed in</span>
+	</label>
+</div>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<body>
+<!--/*
+  Notification bell with unread counter and dropdown panel (Figma: "Notifications panel",
+  unread items and empty "You're all caught up"). A <details> disclosure: opens and closes
+  without JavaScript; app.js only closes it on Escape / click outside.
+
+  Model attributes (filled for every page by a @ControllerAdvice in M2-07/M3; may be absent):
+    unreadCount   - Number of unread notifications of the signed-in user (badge; hidden when 0/null)
+    notifications - List of the latest unread notifications (max. ~10), newest first; each item has
+                      id        Long
+                      type      NotificationType (or its name): CORRECTIVE_ACTION_OVERDUE,
+                                DAILY_LOG_UNSIGNED, REOPEN_REQUESTED, HIGH_SEVERITY_INCIDENT
+                      body      String (detail line, already in the data's language)
+                      link      String, app-relative URL of the record (may be null)
+                      createdAt LocalDateTime or ZonedDateTime (not Instant: #temporals needs a zone)
+                    The title comes from the type (message notification.type.<TYPE>) so it follows
+                    the UI language.
+
+  Endpoints used (POST, CSRF token added automatically by th:action):
+    /notifications/{id}/read   mark one as read, then redirect back (PRG)
+    /notifications/read-all    mark all as read, then redirect back (PRG)
+*/-->
+<details th:fragment="bell" class="bell" sec:authorize="isAuthenticated()"
+         th:with="count=${unreadCount != null ? unreadCount : 0}">
+	<summary th:aria-label="#{notifications.bell(${count})}">
+		<svg th:replace="~{fragments/icon :: icon('bell')}"></svg>
+		<span class="bell__count" th:if="${count > 0}" th:text="${count > 99 ? '99+' : count}" aria-hidden="true">3</span>
+	</summary>
+
+	<div class="bell__panel" role="region" th:aria-label="#{notifications.title}">
+		<div class="bell__head">
+			<div class="bell__head-text">
+				<h2 class="bell__title" th:text="#{notifications.title}">Notifications</h2>
+				<span class="bell__unread"
+				      th:text="${count > 0} ? #{notifications.unread(${count})} : #{notifications.none}">3 unread</span>
+			</div>
+			<form th:if="${count > 0}" th:action="@{/notifications/read-all}" action="/notifications/read-all" method="post">
+				<button type="submit" class="link-button" th:text="#{notifications.markAllRead}">Mark all as read</button>
+			</form>
+		</div>
+
+		<ul class="bell__list" th:if="${notifications != null and !#lists.isEmpty(notifications)}">
+			<li class="bell__item" th:each="n : ${notifications}"
+			    th:with="type=${'' + n.type},
+			             tone=${type == 'CORRECTIVE_ACTION_OVERDUE' ? 'overdue'
+			                  : (type == 'DAILY_LOG_UNSIGNED' ? 'unsigned'
+			                  : (type == 'REOPEN_REQUESTED' ? 'reopen' : 'severity'))},
+			             iconName=${type == 'DAILY_LOG_UNSIGNED' ? 'clock' : (type == 'REOPEN_REQUESTED' ? 'lock' : 'incidents')}">
+				<span class="notice-icon" aria-hidden="true" th:classappend="${'notice-icon--' + tone}">
+					<svg th:replace="~{fragments/icon :: iconSm(${iconName})}"></svg>
+				</span>
+				<div class="bell__item-body">
+					<a class="bell__item-title" th:href="${n.link != null} ? @{${n.link}} : @{/notifications}"
+					   th:text="#{${'notification.type.' + type}}">Corrective action overdue</a>
+					<span class="bell__item-text" th:text="${n.body}">Clear emergency access route · Riverside Tower · due yesterday</span>
+					<span class="bell__item-meta">
+						<time th:datetime="${n.createdAt}"
+						      th:text="${#temporals.format(n.createdAt, #messages.msg('format.datetime'))}">7 Nov 2026, 08:14</time>
+						<form th:action="@{/notifications/{id}/read(id=${n.id})}" action="#" method="post">
+							<button type="submit" class="link-button" th:text="#{notifications.markRead}">Mark as read</button>
+						</form>
+					</span>
+				</div>
+			</li>
+		</ul>
+
+		<div class="bell__empty" th:if="${notifications == null or #lists.isEmpty(notifications)}">
+			<span class="notice-icon notice-icon--done" aria-hidden="true">
+				<svg th:replace="~{fragments/icon :: iconSm('check')}"></svg>
+			</span>
+			<strong th:text="#{notifications.empty.title}">You're all caught up</strong>
+			<span class="text-muted" th:text="#{notifications.empty.body}">There are no unread in-app notifications.</span>
+		</div>
+
+		<p class="bell__foot" th:text="#{notifications.footer}">Notifications are based on your role and assigned sites.</p>
+	</div>
+</details>
+</body>
+</html>

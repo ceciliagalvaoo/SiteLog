@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Flash message (Figma: "Flash message" success / info / error - icon + title + text + dismiss).
+  Colour is never the only signal: each type has its own icon and a title.
+
+  1) Component, for messages a page shows itself (e.g. the form error summary):
+       <div th:replace="~{fragments/flash :: flash('error', #{form.error.title}, #{dailyLog.form.error.body})}"></div>
+     type  - success | info | error
+     title - resolved text (use #{...})
+     body  - resolved text or null
+
+  2) Messages after a redirect (PRG), rendered by layout.html above the page content.
+     Controllers add flash attributes with MESSAGE KEYS, never text:
+       redirect.addFlashAttribute("flashSuccess", "dailyLog.flash.saved");
+       redirect.addFlashAttribute("flashDetail", "dailyLog.flash.saved.detail");   // optional
+       redirect.addFlashAttribute("flashArgs", new Object[] { formattedDate });    // optional
+     Attributes: flashSuccess | flashError | flashInfo (title key), flashDetail (body key),
+     flashArgs (Object[] for {0}, {1}... in both keys).
+*/-->
+<div th:fragment="flash(type, title, body)" class="flash" th:classappend="${'flash--' + type}"
+     th:attr="role=${type == 'error'} ? 'alert' : 'status'" data-flash
+     th:with="iconName=${type == 'success' ? 'check' : (type == 'error' ? 'alert' : 'info')}">
+	<span class="flash__icon" aria-hidden="true">
+		<svg th:replace="~{fragments/icon :: icon(${iconName})}"></svg>
+	</span>
+	<div class="flash__text">
+		<strong class="flash__title" th:text="${title}">Daily log saved</strong>
+		<span class="flash__body" th:if="${body != null}" th:text="${body}">Wednesday, 14 May 2025 is ready for review.</span>
+	</div>
+	<button type="button" class="flash__close" th:aria-label="#{flash.dismiss}" data-flash-close>
+		<svg th:replace="~{fragments/icon :: iconSm('close')}"></svg>
+	</button>
+</div>
+
+<div th:fragment="messages" class="flash-stack"
+     th:if="${flashSuccess != null or flashError != null or flashInfo != null}"
+     th:with="detail=${flashDetail != null ? #messages.msgWithParams(flashDetail, flashArgs) : null}">
+	<th:block th:if="${flashSuccess != null}">
+		<div th:replace="~{fragments/flash :: flash('success', ${#messages.msgWithParams(flashSuccess, flashArgs)}, ${detail})}"></div>
+	</th:block>
+	<th:block th:if="${flashError != null}">
+		<div th:replace="~{fragments/flash :: flash('error', ${#messages.msgWithParams(flashError, flashArgs)}, ${detail})}"></div>
+	</th:block>
+	<th:block th:if="${flashInfo != null}">
+		<div th:replace="~{fragments/flash :: flash('info', ${#messages.msgWithParams(flashInfo, flashArgs)}, ${detail})}"></div>
+	</th:block>
+</div>
+</body>
+</html>

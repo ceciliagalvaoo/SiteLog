@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Toggle (Figma: "Toggle" on / off - the Active switch of a user or a crew).
+  A real checkbox bound with th:field (Spring adds the hidden "_active" marker so "off" is
+  submitted too), styled as a switch and announced as one with role="switch".
+
+  toggle(field, label, hint)
+    field - boolean property of the th:object form, e.g. 'active'
+    label - resolved text, e.g. #{common.active}
+    hint  - resolved text or null, e.g. #{user.active.hint}
+  Example: <label th:replace="~{fragments/toggle :: toggle('active', #{common.active}, #{crew.active.hint})}"></label>
+*/-->
+<label th:fragment="toggle(field, label, hint)" class="toggle">
+	<span class="toggle__text">
+		<span class="toggle__label" th:text="${label}">Active</span>
+		<span class="toggle__hint" th:if="${hint != null}" th:text="${hint}">User can sign in immediately</span>
+	</span>
+	<input type="checkbox" class="toggle__input" role="switch" th:field="*{__${field}__}">
+</label>
+</body>
+</html>

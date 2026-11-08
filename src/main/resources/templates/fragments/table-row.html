@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Data table (Figma: "Data table" - header cell, cell variants muted / strong / accent / chip,
+  default row and hover). Hover is a CSS state. Below 640 px a table with class "table--stack"
+  turns every row into a card; each cell shows its column name from data-label.
+
+  header(keys)                  <thead> from a list of message keys, '' for an unlabeled column
+  cell(label, value, variant)   <td>; label = column name (for the mobile card), variant = null | strong | muted
+  linkCell(label, value, href)  accent cell with the record link (e.g. the daily log date)
+  chipCell(label, family, value) <td> with a status chip (see fragments/chip)
+  emptyRow(colspan, message)    single row when a filtered list has no results
+  emptyState(title, body, actionLabel, actionHref)  empty list page ("No daily logs yet"), action optional (null)
+
+  Example (a daily logs list):
+    <div class="table-wrap">
+      <table class="table table--stack">
+        <thead th:replace="~{fragments/table-row :: header(${ {'dailyLog.date','dailyLog.weather','dailyLog.entries','common.createdBy','common.status'} })}"></thead>
+        <tbody>
+          <tr th:each="log : ${logs}">
+            <td th:replace="~{fragments/table-row :: linkCell(#{dailyLog.date}, ${#temporals.format(log.logDate, #messages.msg('format.date'))}, @{/daily-logs/{id}(id=${log.id})})}"></td>
+            <td th:replace="~{fragments/table-row :: cell(#{dailyLog.weather}, #{${'weather.' + log.weather}}, null)}"></td>
+            <td th:replace="~{fragments/table-row :: cell(#{dailyLog.entries}, ${#numbers.formatInteger(log.entryCount, 1)}, null)}"></td>
+            <td th:replace="~{fragments/table-row :: cell(#{common.createdBy}, ${log.createdByName}, null)}"></td>
+            <td th:replace="~{fragments/table-row :: chipCell(#{common.status}, 'log', ${log.status})}"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  Note ${ {...} }: the spaces are required, "${{" would be the conversion-service syntax.
+*/-->
+<thead th:fragment="header(keys)">
+	<tr>
+		<th scope="col" th:each="key : ${keys}">
+			<span th:if="${key != ''}" th:text="#{${key}}">Date</span>
+			<span th:unless="${key != ''}" class="visually-hidden" th:text="#{common.actions}">Actions</span>
+		</th>
+	</tr>
+</thead>
+
+<td th:fragment="cell(label, value, variant)"
+    th:attr="data-label=${label}"
+    th:classappend="${variant != null} ? ${'cell--' + variant}"
+    th:text="${value}">Cloudy</td>
+
+<td th:fragment="linkCell(label, value, href)" class="cell--accent" th:attr="data-label=${label}">
+	<a th:href="${href}" th:text="${value}">14 May 2025</a>
+</td>
+
+<td th:fragment="chipCell(label, family, value)" th:attr="data-label=${label}">
+	<span th:replace="~{fragments/chip :: status(${family}, ${value})}"></span>
+</td>
+
+<tr th:fragment="emptyRow(colspan, message)">
+	<td th:colspan="${colspan}" class="text-muted" th:text="${message}">No results match the filter.</td>
+</tr>
+
+<div th:fragment="emptyState(title, body, actionLabel, actionHref)" class="empty-state">
+	<span class="empty-state__icon" aria-hidden="true">
+		<svg th:replace="~{fragments/icon :: icon('compliance')}"></svg>
+	</span>
+	<h2 th:text="${title}">No daily logs yet</h2>
+	<p class="text-muted" th:text="${body}">Start recording today's site conditions and work.</p>
+	<th:block th:if="${actionLabel != null}">
+		<a th:replace="~{fragments/button :: btnLink(${actionLabel}, ${actionHref}, 'primary')}"></a>
+	</th:block>
+</div>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Status chips (Figma: "Status chips" - one chip component with 12 colour variants, used by the
+  families below). Text label + dot + colour: the label carries the meaning, the colour only
+  reinforces it, so the chips also work for colour-blind users and in greyscale print.
+
+  status(family, value)  the usual way: the template prints the value, app.css maps
+                         .chip--<family>-<value> to a colour, messages.properties gives the text
+                         (key status.<family>.<VALUE>).
+     family | values (enum names)                              | colour
+     log      DRAFT, SIGNED_OFF, REOPENED                        neutral, teal, amber
+     incident REPORTED, UNDER_REVIEW, SIGNED_OFF, CLOSED          blue, yellow, green, grey
+     action   OPEN, DONE, OVERDUE                                blue, green, red
+     severity LOW, MEDIUM, HIGH, CRITICAL                        cyan, yellow, orange, red
+     user     ACTIVE, INACTIVE                                   teal, grey
+     role     ADMIN, SITE_MANAGER, SAFETY_SUPERVISOR, INSPECTOR  purple, blue, yellow, neutral
+     site     ACTIVE, FINISHED                                   teal, grey
+     draft    PENDING_REVIEW, NEEDS_MANUAL_INPUT, ACCEPTED, REJECTED  lavender, amber, green, grey
+  Examples:
+     <span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+     <span th:replace="~{fragments/chip :: status('user', ${user.active} ? 'ACTIVE' : 'INACTIVE')}"></span>
+
+  chip(tone, label)      a chip with an explicit colour and an already resolved label
+                         tone: neutral teal green amber blue yellow orange red cyan grey lavender purple
+*/-->
+<span th:fragment="status(family, value)" class="chip"
+      th:with="key=${'' + value}"
+      th:classappend="${'chip--' + family + '-' + #strings.toLowerCase(key)}"
+      th:text="#{${'status.' + family + '.' + key}}">Draft</span>
+
+<span th:fragment="chip(tone, label)" class="chip"
+      th:classappend="${'chip--' + tone}" th:text="${label}">Active</span>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Line icon from the sprite static/img/icons.svg (Figma "Icons" section + navigation icons).
+  Decorative: always aria-hidden; the accessible name comes from the text next to it or from
+  an aria-label on the button that contains it.
+  Usage: <svg th:replace="~{fragments/icon :: icon('bell')}"></svg>
+         <svg th:replace="~{fragments/icon :: iconSm('close')}"></svg>
+*/-->
+<svg th:fragment="icon(name)" class="icon" aria-hidden="true" focusable="false"><use th:href="@{/img/icons.svg} + '#' + ${name}"></use></svg>
+
+<svg th:fragment="iconSm(name)" class="icon icon--sm" aria-hidden="true" focusable="false"><use th:href="@{/img/icons.svg} + '#' + ${name}"></use></svg>
+</body>
+</html>

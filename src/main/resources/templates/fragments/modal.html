@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Modal dialog (Figma: "Modal" - icon, eyebrow, title, subtitle, form, Cancel / primary action;
+  used for the reopen reason and the corrective action). Native <dialog>: focus is trapped,
+  Escape closes it, the page behind stays visible.
+
+  modal(id, eyebrow, title, subtitle, body, open)
+    id       - element id; a trigger button opens it with data-modal-open="<id>" (static/js/app.js)
+    eyebrow  - resolved text or null, e.g. "INC-1042 · Corrective action"
+    title    - resolved text
+    subtitle - resolved text or null
+    body     - fragment expression with the form, e.g. ~{::#reopen-form}
+    open     - true to render it already open: after a POST with validation errors the controller
+               returns the same page (no redirect) and the dialog shows the field errors
+
+  The form inside posts normally (PRG); its Cancel button uses data-modal-close.
+  Example - the form is written INSIDE the element that gets replaced, so it is rendered only
+  once, inside the dialog:
+    <button type="button" class="btn btn--secondary" data-modal-open="reopen-modal" th:text="#{dailyLog.reopen}">Request reopen</button>
+    <dialog th:replace="~{fragments/modal :: modal('reopen-modal', ${log.code}, #{dailyLog.reopen.title},
+             #{dailyLog.reopen.subtitle}, ~{::#reopen-form}, ${#fields.hasErrors('reopenForm.*')})}">
+      <form id="reopen-form" th:object="${reopenForm}" th:action="@{/daily-logs/{id}/reopen(id=${log.id})}" method="post"> ... </form>
+    </dialog>
+*/-->
+<dialog th:fragment="modal(id, eyebrow, title, subtitle, body, open)" class="modal"
+        th:id="${id}" th:aria-labelledby="${id + '-title'}"
+        th:attr="data-open-on-load=${open} ? 'true'">
+	<div class="modal__head">
+		<span class="modal__icon" aria-hidden="true">
+			<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+		</span>
+		<button type="button" class="modal__close" data-modal-close th:aria-label="#{modal.close}">
+			<svg th:replace="~{fragments/icon :: icon('close')}"></svg>
+		</button>
+	</div>
+	<div class="modal__titles">
+		<p class="eyebrow" th:if="${eyebrow != null}" th:text="${eyebrow}">INC-1042 · Corrective action</p>
+		<h2 th:id="${id + '-title'}" th:text="${title}">Add corrective action</h2>
+		<p class="text-muted" th:if="${subtitle != null}" th:text="${subtitle}">Assign clear follow-up work and a realistic due date.</p>
+	</div>
+	<th:block th:replace="${body}"></th:block>
+</dialog>
+</body>
+</html>

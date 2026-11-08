@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Buttons (Figma: "Button" primary / secondary / danger x default / hover / disabled).
+  Hover and focus are CSS states; "disabled" is the HTML attribute. Width hugs the label so a
+  longer Croatian label ("Spremi promjene") never truncates.
+
+  btn(label, variant)                    submit button
+  btnType(label, variant, type, disabled) any type (submit | button | reset), optionally disabled
+  btnLink(label, href, variant)                link that looks like a button (navigation, GET)
+  btnIcon(iconName, label, variant)      square icon-only button; label becomes aria-label
+                                            (variant: '' or 'danger', e.g. the remove "x" on a crew row)
+
+  Names start with "btn": a selector "button" would also match every <button> element of this file.
+  label   - resolved text, e.g. #{common.save}
+  variant - primary | secondary | danger | ghost
+  href    - resolved URL, e.g. @{/sites/new}
+  Example: <button th:replace="~{fragments/button :: btn(#{dailyLog.save}, 'primary')}"></button>
+*/-->
+<button th:fragment="btn(label, variant)" type="submit" class="btn"
+        th:classappend="${'btn--' + variant}" th:text="${label}">Save changes</button>
+
+<button th:fragment="btnType(label, variant, type, disabled)" class="btn"
+        th:type="${type}" th:classappend="${'btn--' + variant}" th:disabled="${disabled}"
+        th:text="${label}">Save changes</button>
+
+<a th:fragment="btnLink(label, href, variant)" class="btn" th:href="${href}"
+   th:classappend="${'btn--' + variant}" th:text="${label}">New daily log</a>
+
+<button th:fragment="btnIcon(iconName, label, variant)" type="button" class="btn-icon"
+        th:classappend="${variant != null and variant != ''} ? ${'btn-icon--' + variant}"
+        th:aria-label="${label}" th:title="${label}">
+	<svg th:replace="~{fragments/icon :: iconSm(${iconName})}"></svg>
+</button>
+</body>
+</html>
