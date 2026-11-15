@@ -10,9 +10,9 @@ spring:
     hikari:
       # Explicit pool settings (not the HikariCP defaults of 10 connections). Production goes
       # through the Supabase Supavisor pooler in session mode: every Hikari connection holds one
-      # server connection, and the free plan's pool is small (pool size 15 on the Nano compute,
-      # see Database > Settings in the Supabase dashboard; counted per
-      # database/user, shared with the Supabase dashboard and any other client). 5 connections
+      # server connection, and the free plan's pool is small (check the pool size of the project's
+      # plan in the Supabase dashboard, Database > Settings; it is counted per database/user and
+      # shared with the dashboard and any other client). 5 connections
       # leave headroom and are more than enough for one Render instance: requests are short
       # transactions, the scheduled jobs run one at a time (ShedLock), and open-in-view is off,
       # so a connection is never held while a page renders. Override with DB_POOL_SIZE.
