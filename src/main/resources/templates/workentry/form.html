@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<!--/*
+  Add / edit ONE work entry of a log, with its crew rows (no frame of its own: the "Work completed"
+  block of p. 2 on its own page, reached from the log detail).
+  Model: workEntryForm (WorkEntryForm), log (DailyLogHeader), logVersion (hidden: the version the
+  user saw), entryId (null = new), formAction, crews.
+  Row buttons: action=addCrew / removeCrew-j (re-render, nothing saved); Save sends action=save.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="(${entryId == null} ? #{workEntry.form.new.title} : #{workEntry.form.edit.title}) + ' · ' + #{app.name}">Add work entry · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow"
+     th:with="isNew=${entryId == null}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<a th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="${day}">29 Oct 2026</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${isNew} ? #{workEntry.form.new.title} : #{workEntry.form.edit.title}">Add work entry</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{dailyLog.detail.eyebrow(${log.siteCode})}">Daily log · ZG-01</p>
+			<h1 th:text="${isNew} ? #{workEntry.form.new.title} : #{workEntry.form.edit.title}">Add work entry</h1>
+			<p class="lead" th:text="${#temporals.format(log.logDate, #messages.msg('format.date.long'))}">Thursday, 29 October 2026</p>
+		</div>
+		<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+	</div>
+
+	<form class="form" th:object="${workEntryForm}" th:action="@{${formAction}}" method="post" novalidate>
+		<input type="hidden" name="logVersion" th:value="${logVersion}">
+		<input type="hidden" th:field="*{id}">
+		<button type="submit" name="action" value="save" class="visually-hidden" tabindex="-1" aria-hidden="true"
+		        th:text="#{common.save}">Save</button>
+
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', #{workEntry.form.error.title}, #{form.error.body})}"></div>
+		</th:block>
+
+		<section class="card">
+			<div class="card__header">
+				<h2 th:text="#{dailyLog.form.work.title}">Work completed</h2>
+				<p class="card__subtitle" th:text="#{workEntry.form.card.subtitle}">The activity and the crews that worked on it.</p>
+			</div>
+			<div class="entry__fields">
+				<div class="entry__wide" th:insert="~{fragments/input :: textField('description', #{workEntry.field.description}, 'text', #{workEntry.field.description.placeholder}, true)}"></div>
+				<div th:insert="~{fragments/input :: textField('location', #{workEntry.field.location}, 'text', #{workEntry.field.location.placeholder}, false)}"></div>
+				<div th:insert="~{fragments/input :: textField('startTime', #{workEntry.field.startTime}, 'time', null, false)}"></div>
+				<div th:insert="~{fragments/input :: textField('endTime', #{workEntry.field.endTime}, 'time', null, false)}"></div>
+			</div>
+			<div th:replace="~{fragments/crew-row :: crewRows(${workEntryForm.crewAssignments}, '', '')}"></div>
+		</section>
+
+		<div class="form-actions form-actions--sticky">
+			<a class="btn btn--secondary" th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary" name="action" value="save"
+			        th:text="${isNew} ? #{workEntry.form.new.title} : #{common.saveChanges}">Add work entry</button>
+		</div>
+	</form>
+</div>
+</body>
+</html>

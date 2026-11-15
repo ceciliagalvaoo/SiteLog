@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!--/*
+  New / edit daily log (Figma p. 2 form, p. 3 validation errors, mobile p. 14 with sticky Save).
+  The whole aggregate in one form, as drawn: log -> work entries -> crew rows.
+  Model: dailyLogForm (DailyLogForm), site (SiteListItem), logId (null = new), log (DailyLogDetails,
+  edit only), formAction, crews (List<CrewOption>), weathers (Weather[]).
+
+  Rows are added / removed WITHOUT JavaScript: every row button is a submit button named "action"
+  (addEntry, removeEntry-i, addCrew-i, removeCrew-i-j). The controller changes the form, nothing is
+  saved, and the page comes back with the new row. "Save daily log" sends action=save.
+  Indexes in the field names (workEntries[0].crewAssignments[1].crewId) are what Spring binds.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="(${logId == null} ? #{dailyLog.form.new.title} : #{dailyLog.form.edit.title}) + ' · ' + #{app.name}">New daily log · SiteLog</title></head>
+<body>
+<div id="content" class="stack" th:with="isNew=${logId == null}, entryCount=${#lists.size(dailyLogForm.workEntries)}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites/{id}(id=${site.id})}" th:text="${site.name}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<th:block th:unless="${isNew}">
+			<a th:href="@{/daily-logs/{id}(id=${logId})}" th:text="${#temporals.format(log.logDate, #messages.msg('format.date'))}">29 Oct 2026</a>
+			<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		</th:block>
+		<span aria-current="page" th:text="${isNew} ? #{dailyLog.form.new.title} : #{dailyLog.form.edit.title}">New daily log</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{dailyLog.form.eyebrow}">Daily reporting</p>
+			<h1 th:text="${isNew} ? #{dailyLog.form.new.title} : #{dailyLog.form.edit.title}">New daily log</h1>
+			<p class="lead" th:text="#{dailyLog.form.lead}">Record site conditions and completed work.</p>
+		</div>
+	</div>
+
+	<form class="form log-form" th:object="${dailyLogForm}" th:action="@{${formAction}}" method="post" novalidate>
+		<input type="hidden" th:field="*{version}">
+		<!--/* Enter in a field submits the FIRST submit button of the form: make it "save", not a row "Remove". */-->
+		<button type="submit" name="action" value="save" class="visually-hidden" tabindex="-1" aria-hidden="true"
+		        th:text="#{dailyLog.form.save}">Save daily log</button>
+
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div class="log-form__alert" th:insert="~{fragments/flash :: flash('error', #{dailyLog.form.error.title}, #{dailyLog.form.error.body})}"></div>
+		</th:block>
+
+		<div class="log-form__main">
+			<!-- 1 · shift details -->
+			<section class="card">
+				<div class="step-header">
+					<span class="step-header__number" aria-hidden="true">1</span>
+					<div class="card__header">
+						<h2 th:text="#{dailyLog.form.shift.title}">Shift details</h2>
+						<p class="card__subtitle" th:text="#{dailyLog.form.shift.subtitle}">Basic conditions for this working day.</p>
+					</div>
+				</div>
+				<div class="form-grid form-grid--2">
+					<div th:replace="~{fragments/input :: textField('logDate', #{dailyLog.field.date}, 'date', null, true)}"></div>
+					<div th:replace="~{fragments/input :: enumSelectField('weather', #{dailyLog.field.weatherOptional}, ${weathers}, 'weather', #{dailyLog.field.weather.empty}, false)}"></div>
+				</div>
+				<div th:replace="~{fragments/input :: textareaField('notes', #{dailyLog.field.notes}, #{dailyLog.field.notes.placeholder}, false)}"></div>
+			</section>
+
+			<!-- 2 · work completed -->
+			<section class="card">
+				<div class="step-header">
+					<span class="step-header__number" aria-hidden="true">2</span>
+					<div class="card__header">
+						<h2 th:text="#{dailyLog.form.work.title}">Work completed</h2>
+						<p class="card__subtitle" th:text="#{dailyLog.form.work.subtitle}">Add each activity and assign the crews involved.</p>
+					</div>
+				</div>
+				<p class="field__error" id="workEntries-error" th:if="${#fields.hasErrors('workEntries')}" th:errors="*{workEntries}">Add at least one work entry</p>
+
+				<div class="entry" role="group" th:each="entry, e : *{workEntries}" th:aria-labelledby="${'entry-title-' + e.index}">
+					<div class="entry__head">
+						<h3 class="entry__title" th:id="${'entry-title-' + e.index}">
+							<span class="entry__number" th:text="${#numbers.formatInteger(e.count, 2)}">01</span>
+							<span th:text="${#strings.isEmpty(entry.description)} ? #{workEntry.untitled} : ${entry.description}">Formwork level 3</span>
+						</h3>
+						<button type="submit" class="link-button link-button--danger" name="action" formnovalidate
+						        th:value="${'removeEntry-' + e.index}"
+						        th:attr="aria-label=#{workEntry.remove.label(${e.count})}"
+						        th:text="#{workEntry.remove}">Remove</button>
+					</div>
+					<input type="hidden" th:field="*{workEntries[__${e.index}__].id}">
+
+					<div class="entry__fields">
+						<div class="entry__wide" th:insert="~{fragments/input :: textField(${'workEntries[' + e.index + '].description'}, #{workEntry.field.description}, 'text', #{workEntry.field.description.placeholder}, true)}"></div>
+						<div th:insert="~{fragments/input :: textField(${'workEntries[' + e.index + '].location'}, #{workEntry.field.location}, 'text', #{workEntry.field.location.placeholder}, false)}"></div>
+						<div th:insert="~{fragments/input :: textField(${'workEntries[' + e.index + '].startTime'}, #{workEntry.field.startTime}, 'time', null, false)}"></div>
+						<div th:insert="~{fragments/input :: textField(${'workEntries[' + e.index + '].endTime'}, #{workEntry.field.endTime}, 'time', null, false)}"></div>
+					</div>
+
+					<div th:replace="~{fragments/crew-row :: crewRows(${entry.crewAssignments}, ${'workEntries[' + e.index + '].'}, ${'-' + e.index})}"></div>
+				</div>
+
+				<div>
+					<button type="submit" class="btn btn--secondary" name="action" value="addEntry" formnovalidate>
+						<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+						<span th:text="#{dailyLog.form.addEntry}">Add work entry</span>
+					</button>
+				</div>
+			</section>
+		</div>
+
+		<!-- summary: a side card at 1440 px, the sticky Save bar at 390 px -->
+		<aside class="card log-summary" th:aria-label="#{dailyLog.form.summary}">
+			<div class="log-summary__head">
+				<p class="eyebrow" th:text="#{dailyLog.form.summary}">Log summary</p>
+				<span th:replace="~{fragments/chip :: status('log', ${isNew} ? 'DRAFT' : ${log.status})}"></span>
+			</div>
+			<dl class="log-summary__facts">
+				<div><dt th:text="#{dailyLog.form.summary.site}">Site</dt><dd th:text="${site.name}">Residential Complex Lanište</dd></div>
+				<div><dt th:text="#{dailyLog.form.summary.date}">Date</dt>
+					<dd th:text="${dailyLogForm.logDate != null} ? ${#temporals.format(dailyLogForm.logDate, #messages.msg('format.date'))} : #{common.notSet}">15 Nov 2026</dd></div>
+				<div><dt th:text="#{dailyLog.form.summary.entries}">Work entries</dt><dd th:text="${entryCount}">2</dd></div>
+			</dl>
+			<p class="log-summary__count" th:text="#{dailyLog.form.entryCount(${entryCount})}">2 work entries</p>
+			<button type="submit" class="btn btn--primary" name="action" value="save" th:text="#{dailyLog.form.save}">Save daily log</button>
+			<a class="btn btn--ghost log-summary__cancel" th:href="${isNew} ? @{/sites/{id}(id=${site.id}, tab='logs')} : @{/daily-logs/{id}(id=${logId})}"
+			   th:text="#{common.cancel}">Cancel</a>
+		</aside>
+	</form>
+</div>
+</body>
+</html>

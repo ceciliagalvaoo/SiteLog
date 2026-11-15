@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--/*
+  Add / edit ONE crew row of a work entry (no frame of its own: the "Crew row" component of p. 2
+  on its own page, reached from "Add crew" / "Edit" on the log detail).
+  Model: crewAssignmentForm, log (DailyLogHeader), logVersion, workEntryId, assignmentId
+  (null = new), formAction, crews.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="(${assignmentId == null} ? #{crewAssignment.form.new.title} : #{crewAssignment.form.edit.title}) + ' · ' + #{app.name}">Add crew · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow"
+     th:with="isNew=${assignmentId == null}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<a th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="${day}">29 Oct 2026</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${isNew} ? #{crewAssignment.form.new.title} : #{crewAssignment.form.edit.title}">Add crew</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{dailyLog.detail.eyebrow(${log.siteCode})}">Daily log · ZG-01</p>
+			<h1 th:text="${isNew} ? #{crewAssignment.form.new.title} : #{crewAssignment.form.edit.title}">Add crew</h1>
+			<p class="lead" th:text="${#temporals.format(log.logDate, #messages.msg('format.date.long'))}">Thursday, 29 October 2026</p>
+		</div>
+		<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+	</div>
+
+	<form class="form" th:object="${crewAssignmentForm}" th:action="@{${formAction}}" method="post" novalidate>
+		<input type="hidden" name="logVersion" th:value="${logVersion}">
+		<input type="hidden" th:field="*{id}">
+
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', #{crewAssignment.form.error.title}, #{form.error.body})}"></div>
+		</th:block>
+
+		<section class="card">
+			<div class="card__header">
+				<h2 th:text="#{crewAssignment.form.card.title}">Crew assignment</h2>
+				<p class="card__subtitle" th:text="#{crewAssignment.form.card.subtitle}">Hours worked must be between 0 and 24; at least one worker.</p>
+			</div>
+			<div class="form-grid form-grid--2">
+				<div th:replace="~{fragments/input :: selectField('crewId', #{crewAssignment.field.crew}, ${crews}, 'id', 'name', #{crewAssignment.field.crew.empty}, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('task', #{crewAssignment.field.task}, 'text', #{crewAssignment.field.task.placeholder}, false)}"></div>
+				<div th:replace="~{fragments/input :: textField('hoursWorked', #{crewAssignment.field.hoursWorked}, 'number', null, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('workerCount', #{crewAssignment.field.workerCount}, 'number', null, true)}"></div>
+			</div>
+		</section>
+
+		<div class="form-actions form-actions--sticky">
+			<a class="btn btn--secondary" th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary"
+			        th:text="${isNew} ? #{crewAssignment.form.new.title} : #{common.saveChanges}">Add crew</button>
+		</div>
+	</form>
+</div>
+</body>
+</html>

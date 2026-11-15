@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Crew rows of one work entry (Figma "Crew row" component: cells -> row -> group; pp. 2-3, 14).
+  Used by dailylog/form (rows nested in a work entry) and workentry/form (rows of the entry alone).
+  Must be inside the <form th:object> of the page.
+
+  crewRows(rows, prefix, actionSuffix)
+    rows         - the List<CrewAssignmentForm> being rendered (for th:each)
+    prefix       - property path before "crewAssignments", e.g. 'workEntries[0].' or ''
+    actionSuffix - appended to the row buttons: '-0' gives addCrew-0 / removeCrew-0-j
+                   (daily log form), '' gives addCrew / removeCrew-j (work entry form)
+  Model: crews (List<CrewOption>: active crews plus the inactive ones already chosen).
+  The buttons are submit buttons named "action" (no JavaScript); formnovalidate because nothing
+  is saved by them.
+*/-->
+<div th:fragment="crewRows(rows, prefix, actionSuffix)" class="crew-rows">
+	<div class="crew-row" th:each="row, r : ${rows}"
+	     th:with="base=${prefix + 'crewAssignments[' + r.index + ']'}">
+		<input type="hidden" th:field="*{__${base}__.id}">
+		<div class="crew-row__crew" th:insert="~{fragments/input :: selectField(${base + '.crewId'}, #{crewAssignment.field.crew}, ${crews}, 'id', 'name', #{crewAssignment.field.crew.empty}, true)}"></div>
+		<div th:insert="~{fragments/input :: textField(${base + '.hoursWorked'}, #{crewAssignment.field.hoursWorked}, 'number', null, true)}"></div>
+		<div th:insert="~{fragments/input :: textField(${base + '.workerCount'}, #{crewAssignment.field.workerCount}, 'number', null, true)}"></div>
+		<div class="crew-row__task" th:insert="~{fragments/input :: textField(${base + '.task'}, #{crewAssignment.field.task}, 'text', #{crewAssignment.field.task.placeholder}, false)}"></div>
+		<button type="submit" class="btn-icon btn-icon--danger crew-row__remove" name="action" formnovalidate
+		        th:value="${'removeCrew' + actionSuffix + '-' + r.index}"
+		        th:attr="aria-label=#{crewAssignment.remove.label(${r.count})}"
+		        th:title="#{crewAssignment.remove.label(${r.count})}">
+			<svg th:replace="~{fragments/icon :: iconSm('close')}"></svg>
+		</button>
+	</div>
+	<p class="text-muted" th:if="${#lists.isEmpty(rows)}" th:text="#{crewAssignment.none}">No crew assigned yet.</p>
+	<button type="submit" class="link-button link-button--success" name="action" formnovalidate
+	        th:value="${'addCrew' + actionSuffix}">
+		+ <span th:text="#{crewAssignment.add}">Add another crew</span>
+	</button>
+</div>
+</body>
+</html>

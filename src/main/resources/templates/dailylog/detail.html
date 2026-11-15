@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<!--/*
+  Daily log detail (Figma p. 10 Draft, p. 5 Signed off and locked, p. 9 Reopened).
+  Model: log (DailyLogDetails: status, editable, deletable, canSignOff(), work entries with crew rows),
+  contextTitle.
+  - Draft / Reopened (log.editable): Edit log, Sign off (confirmation modal), per-entry and per-row
+    edit / remove, Add work entry, Add crew. Delete only when log.deletable (a Draft without links).
+  - Signed off: read-only, lock notice, no editing control at all (AR1).
+  Every POST carries the version shown on this page (optimistic locking -> 409 page when stale).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="${#temporals.format(log.logDate, #messages.msg('format.date'))} + ' · ' + ${log.siteName} + ' · ' + #{app.name}">29 Oct 2026 · SiteLog</title></head>
+<body>
+<div id="content" class="stack"
+     th:with="dateFmt=#{format.date}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${day}">29 Oct 2026</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{dailyLog.detail.eyebrow(${log.siteCode})}">Daily log · ZG-01</p>
+			<h1 class="title-record" th:text="${#temporals.format(log.logDate, #messages.msg('format.date.long'))}">Thursday, 29 October 2026</h1>
+			<p class="lead" th:if="${log.status.name() == 'SIGNED_OFF'}"
+			   th:text="#{dailyLog.detail.signedBy(${log.signedOffByName}, ${#temporals.format(log.signedOffAt, #messages.msg('format.datetime'))}, ${log.revision})}">Signed off by Marko Kovačević · 29 Oct 2026, 18:02 · Revision 0</p>
+			<p class="lead" th:unless="${log.status.name() == 'SIGNED_OFF'}"
+			   th:text="#{dailyLog.detail.revision(${log.revision})}">Revision 0 · not signed off yet</p>
+		</div>
+		<div class="page-header__actions page-header__actions--center">
+			<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+			<th:block th:if="${log.editable}">
+				<button type="button" class="btn btn--ghost" th:if="${log.deletable}" data-modal-open="delete-log"
+				        th:text="#{dailyLog.detail.delete}">Delete log</button>
+				<a class="btn btn--secondary" th:href="@{/daily-logs/{id}/edit(id=${log.id})}" th:text="#{dailyLog.detail.edit}">Edit log</a>
+				<button type="button" class="btn btn--primary" data-modal-open="sign-off-log" th:disabled="${!log.canSignOff()}"
+				        th:attr="aria-describedby=${!log.canSignOff()} ? 'sign-off-hint'"
+				        th:text="#{dailyLog.detail.signOff}">Sign off</button>
+			</th:block>
+		</div>
+	</div>
+
+	<th:block th:if="${log.status.name() == 'SIGNED_OFF'}">
+		<div class="notice notice--locked" role="note">
+			<svg th:replace="~{fragments/icon :: icon('lock')}"></svg>
+			<div>
+				<strong th:text="#{dailyLog.detail.locked.title}">Signed off and locked</strong>
+				<p th:text="#{dailyLog.detail.locked.body}">This log can no longer be changed.</p>
+			</div>
+		</div>
+	</th:block>
+	<th:block th:if="${log.status.name() == 'REOPENED'}">
+		<div th:replace="~{fragments/flash :: flash('info', #{dailyLog.detail.reopened.title}, #{dailyLog.detail.reopened.body})}"></div>
+	</th:block>
+	<p class="text-muted" id="sign-off-hint" th:if="${log.editable and !log.canSignOff()}" th:text="#{dailyLog.flash.signOffEmpty}">Add at least one work entry before signing off.</p>
+
+	<section class="card">
+		<div class="card__header">
+			<p class="eyebrow" th:text="#{dailyLog.detail.overview}">Log overview</p>
+			<h2 th:text="#{dailyLog.detail.shift}">Shift details</h2>
+		</div>
+		<dl class="facts facts--divided">
+			<div><dt th:text="#{dailyLog.field.date}">Date</dt><dd th:text="${day}">29 Oct 2026</dd></div>
+			<div><dt th:text="#{dailyLog.field.weather}">Weather</dt>
+				<dd th:text="${log.weather != null} ? #{${'weather.' + log.weather}} : #{common.notSet}">Cloudy</dd></div>
+			<div><dt th:text="#{dailyLog.detail.crews}">Crews</dt><dd th:text="${log.crewCount()}">3</dd></div>
+			<div><dt th:text="#{dailyLog.detail.totalWorkers}">Total workers</dt>
+				<dd th:text="${#lists.isEmpty(log.workEntries)} ? 0 : ${#aggregates.sum(log.workEntries.![totalWorkers()])}">14</dd></div>
+			<div><dt th:text="#{dailyLog.detail.totalHours}">Crew hours</dt>
+				<dd th:text="${#numbers.formatDecimal(log.totalHours(), 1, 'DEFAULT', 1, 'DEFAULT')}">24.0</dd></div>
+		</dl>
+		<div>
+			<h3 class="facts__label" th:text="#{dailyLog.field.notes}">Site notes</h3>
+			<p th:text="${#strings.isEmpty(log.notes)} ? #{dailyLog.detail.noNotes} : ${log.notes}">Level 3 slab curing.</p>
+		</div>
+	</section>
+
+	<section class="card">
+		<div class="card__header card__header--row">
+			<div>
+				<p class="eyebrow" th:text="#{dailyLog.detail.work.eyebrow}">Work completed</p>
+				<h2 th:text="#{dailyLog.detail.work.count(${#lists.size(log.workEntries)})}">2 work entries</h2>
+			</div>
+			<a class="btn btn--secondary" th:if="${log.editable}" th:href="@{/daily-logs/{id}/work-entries/new(id=${log.id})}">
+				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+				<span th:text="#{dailyLog.form.addEntry}">Add work entry</span>
+			</a>
+		</div>
+
+		<p class="text-muted" th:if="${#lists.isEmpty(log.workEntries)}" th:text="#{dailyLog.detail.work.empty}">No work entries yet.</p>
+
+		<article class="entry-view" th:each="entry, e : ${log.workEntries}">
+			<header class="entry-view__head">
+				<span class="entry__number" th:text="${#numbers.formatInteger(e.count, 2)}">01</span>
+				<div class="entry-view__title">
+					<h3 th:text="${entry.description}">Formwork for level 3 slab</h3>
+					<p class="text-muted">
+						<th:block th:text="${entry.location}">Level 3</th:block><th:block th:if="${entry.location != null and entry.startTime != null}"> · </th:block><th:block
+						    th:if="${entry.startTime != null}" th:text="${#temporals.format(entry.startTime, #messages.msg('format.time'))} + (${entry.endTime != null} ? '–' + ${#temporals.format(entry.endTime, #messages.msg('format.time'))} : '')">07:00–15:00</th:block>
+					</p>
+				</div>
+				<div class="entry-view__actions" th:if="${log.editable}">
+					<a class="btn btn--ghost" th:href="@{/daily-logs/{l}/work-entries/{w}/edit(l=${log.id}, w=${entry.id})}" th:text="#{workEntry.edit}">Edit entry</a>
+					<form th:action="@{/daily-logs/{l}/work-entries/{w}/delete(l=${log.id}, w=${entry.id})}" method="post">
+						<input type="hidden" name="logVersion" th:value="${log.version}">
+						<button type="submit" class="btn btn--ghost btn--ghost-danger"
+						        th:attr="aria-label=#{workEntry.remove.label(${e.count})}" th:text="#{dailyLog.detail.removeEntry}">Remove entry</button>
+					</form>
+				</div>
+			</header>
+			<ul class="entry-view__crews">
+				<li th:each="row : ${entry.crewAssignments}" class="crew-line">
+					<strong class="crew-line__name" th:text="${row.crewActive} ? ${row.crewName} : #{crewAssignment.inactive(${row.crewName})}">Kovač Formwork</strong>
+					<span th:text="#{dailyLog.detail.hours(${#numbers.formatDecimal(row.hoursWorked, 1, 'DEFAULT', 1, 'DEFAULT')})}">8.0 hrs</span>
+					<span th:text="#{dailyLog.detail.workers(${row.workerCount})}">6 workers</span>
+					<span class="crew-line__task" th:text="${row.task}">Formwork panels</span>
+					<span class="crew-line__actions" th:if="${log.editable}">
+						<a class="link-button" th:href="@{/daily-logs/{l}/crew-assignments/{c}/edit(l=${log.id}, c=${row.id})}"
+						   th:text="#{common.edit}" th:title="#{dailyLog.detail.editCrew}">Edit</a>
+						<form th:action="@{/daily-logs/{l}/crew-assignments/{c}/delete(l=${log.id}, c=${row.id})}" method="post">
+							<input type="hidden" name="logVersion" th:value="${log.version}">
+							<button type="submit" class="link-button link-button--danger" th:text="#{common.remove}"
+							        th:title="#{dailyLog.detail.removeCrew}">Remove</button>
+						</form>
+					</span>
+				</li>
+				<li class="crew-line crew-line--empty text-muted" th:if="${#lists.isEmpty(entry.crewAssignments)}" th:text="#{crewAssignment.none}">No crew assigned yet.</li>
+			</ul>
+			<div class="entry-view__foot" th:if="${log.editable}">
+				<a class="link-button link-button--success" th:href="@{/daily-logs/{l}/work-entries/{w}/crew-assignments/new(l=${log.id}, w=${entry.id})}">
+					+ <span th:text="#{dailyLog.detail.addCrew}">Add crew</span>
+				</a>
+			</div>
+		</article>
+	</section>
+
+	<th:block th:if="${log.editable}">
+		<dialog th:replace="~{fragments/modal :: confirm('sign-off-log', ${day}, #{dailyLog.signOff.title}, #{dailyLog.signOff.subtitle}, ~{dailylog/detail :: #sign-off-form})}">
+			<form id="sign-off-form" class="form-actions" th:action="@{/daily-logs/{id}/sign-off(id=${log.id})}" method="post">
+				<input type="hidden" name="version" th:value="${log.version}">
+				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+				<button type="submit" class="btn btn--primary" th:text="#{dailyLog.detail.signOff}">Sign off</button>
+			</form>
+		</dialog>
+	</th:block>
+	<th:block th:if="${log.deletable}">
+		<dialog th:replace="~{fragments/modal :: confirm('delete-log', ${day}, #{dailyLog.delete.title}, #{dailyLog.delete.subtitle}, ~{dailylog/detail :: #delete-log-form})}">
+			<form id="delete-log-form" class="form-actions" th:action="@{/daily-logs/{id}/delete(id=${log.id})}" method="post">
+				<input type="hidden" name="version" th:value="${log.version}">
+				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+				<button type="submit" class="btn btn--danger" th:text="#{dailyLog.delete.confirm}">Delete log</button>
+			</form>
+		</dialog>
+	</th:block>
+</div>
+</body>
+</html>
