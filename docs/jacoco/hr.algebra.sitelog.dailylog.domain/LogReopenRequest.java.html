@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogReopenRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.domain</a> &gt; <span class="el_source">LogReopenRequest.java</span></div><h1>LogReopenRequest.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.domain;
+
+import java.time.Instant;
+
+import hr.algebra.sitelog.common.domain.BaseEntity;
+import hr.algebra.sitelog.user.domain.AppUser;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
+/**
+ * Request to reopen a signed-off log (AR1): why ({@link #reason}), who asked, who decided and
+ * when. The &quot;why&quot; layer of the reopen audit trail (ADR-0003 item 6); Envers records what changed.
+ * At most one PENDING request per log ({@code uk_log_reopen_request_pending}).
+ *
+ * &lt;p&gt;Not part of the DailyLog aggregate's cascade: requests are history and are never removed
+ * together with an edit of the log.
+ */
+@Entity
+@Table(name = &quot;log_reopen_request&quot;)
+public class LogReopenRequest extends BaseEntity {
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;daily_log_id&quot;, nullable = false)
+	private DailyLog dailyLog;
+
+	/** Mandatory, non-blank ({@code ck_log_reopen_request_reason}). */
+	@Column(name = &quot;reason&quot;, nullable = false)
+	private String reason;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;requested_by&quot;, nullable = false)
+	private AppUser requestedBy;
+
+	/** The supervisor who approved or rejected it; null while PENDING. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = &quot;approved_by&quot;)
+	private AppUser approvedBy;
+
+	@Column(name = &quot;requested_at&quot;, nullable = false)
+	private Instant requestedAt;
+
+	@Column(name = &quot;decided_at&quot;)
+	private Instant decidedAt;
+
+<span class="pc" id="L51">	@Enumerated(EnumType.STRING)</span>
+	@Column(name = &quot;status&quot;, nullable = false, length = 10)
+	private ReopenStatus status = ReopenStatus.PENDING;
+
+<span class="fc" id="L55">	protected LogReopenRequest() {</span>
+<span class="fc" id="L56">	}</span>
+
+<span class="nc" id="L58">	public LogReopenRequest(DailyLog dailyLog, String reason, AppUser requestedBy, Instant requestedAt) {</span>
+<span class="nc" id="L59">		this.dailyLog = dailyLog;</span>
+<span class="nc" id="L60">		this.reason = reason;</span>
+<span class="nc" id="L61">		this.requestedBy = requestedBy;</span>
+<span class="nc" id="L62">		this.requestedAt = requestedAt;</span>
+<span class="nc" id="L63">	}</span>
+
+	/** Records the decision; {@code ck_log_reopen_request_decision} requires both fields together. */
+	public void decide(ReopenStatus decision, AppUser decidedBy, Instant decidedAt) {
+<span class="nc" id="L67">		this.status = decision;</span>
+<span class="nc" id="L68">		this.approvedBy = decidedBy;</span>
+<span class="nc" id="L69">		this.decidedAt = decidedAt;</span>
+<span class="nc" id="L70">	}</span>
+
+	public DailyLog getDailyLog() {
+<span class="fc" id="L73">		return dailyLog;</span>
+	}
+
+	public String getReason() {
+<span class="nc" id="L77">		return reason;</span>
+	}
+
+	public AppUser getRequestedBy() {
+<span class="fc" id="L81">		return requestedBy;</span>
+	}
+
+	public AppUser getApprovedBy() {
+<span class="fc" id="L85">		return approvedBy;</span>
+	}
+
+	public Instant getRequestedAt() {
+<span class="nc" id="L89">		return requestedAt;</span>
+	}
+
+	public Instant getDecidedAt() {
+<span class="nc" id="L93">		return decidedAt;</span>
+	}
+
+	public ReopenStatus getStatus() {
+<span class="fc" id="L97">		return status;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

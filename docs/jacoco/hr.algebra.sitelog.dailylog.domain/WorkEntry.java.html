@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.domain</a> &gt; <span class="el_source">WorkEntry.java</span></div><h1>WorkEntry.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.domain;
+
+import java.time.LocalTime;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import org.hibernate.envers.Audited;
+
+import hr.algebra.sitelog.common.domain.BaseEntity;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+
+/**
+ * One activity on a daily log (what was done, where, from/to). Child of {@link DailyLog};
+ * owns its {@link CrewAssignment}s.
+ *
+ * &lt;p&gt;The assignments are a {@code Set}: a crew appears at most once per work entry
+ * ({@code uk_crew_assignment_entry_crew}), and two {@code List}s (&quot;bags&quot;) could not be
+ * join-fetched in one query (Hibernate's {@code MultipleBagFetchException}).
+ */
+@Entity
+@Table(name = &quot;work_entry&quot;)
+@Audited
+public class WorkEntry extends BaseEntity {
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;daily_log_id&quot;, nullable = false)
+	private DailyLog dailyLog;
+
+	@Column(name = &quot;description&quot;, nullable = false, length = 500)
+	private String description;
+
+	@Column(name = &quot;location&quot;, length = 150)
+	private String location;
+
+	@Column(name = &quot;start_time&quot;)
+	private LocalTime startTime;
+
+	/** After {@link #startTime} when both are set ({@code ck_work_entry_times}). */
+	@Column(name = &quot;end_time&quot;)
+	private LocalTime endTime;
+
+<span class="fc" id="L51">	@OneToMany(mappedBy = &quot;workEntry&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+	@OrderBy(&quot;id ASC&quot;)
+	private Set&lt;CrewAssignment&gt; assignments = new LinkedHashSet&lt;&gt;();
+
+<span class="fc" id="L55">	protected WorkEntry() {</span>
+<span class="fc" id="L56">	}</span>
+
+<span class="fc" id="L58">	public WorkEntry(String description) {</span>
+<span class="fc" id="L59">		this.description = description;</span>
+<span class="fc" id="L60">	}</span>
+
+	public void addAssignment(CrewAssignment assignment) {
+<span class="fc" id="L63">		assignments.add(assignment);</span>
+<span class="fc" id="L64">		assignment.setWorkEntry(this);</span>
+<span class="fc" id="L65">	}</span>
+
+	public void removeAssignment(CrewAssignment assignment) {
+<span class="fc" id="L68">		assignments.remove(assignment);</span>
+<span class="fc" id="L69">		assignment.setWorkEntry(null);</span>
+<span class="fc" id="L70">	}</span>
+
+	public DailyLog getDailyLog() {
+<span class="fc" id="L73">		return dailyLog;</span>
+	}
+
+	void setDailyLog(DailyLog dailyLog) {
+<span class="fc" id="L77">		this.dailyLog = dailyLog;</span>
+<span class="fc" id="L78">	}</span>
+
+	public String getDescription() {
+<span class="fc" id="L81">		return description;</span>
+	}
+
+	public void setDescription(String description) {
+<span class="fc" id="L85">		this.description = description;</span>
+<span class="fc" id="L86">	}</span>
+
+	public String getLocation() {
+<span class="fc" id="L89">		return location;</span>
+	}
+
+	public void setLocation(String location) {
+<span class="fc" id="L93">		this.location = location;</span>
+<span class="fc" id="L94">	}</span>
+
+	public LocalTime getStartTime() {
+<span class="fc" id="L97">		return startTime;</span>
+	}
+
+	public void setStartTime(LocalTime startTime) {
+<span class="fc" id="L101">		this.startTime = startTime;</span>
+<span class="fc" id="L102">	}</span>
+
+	public LocalTime getEndTime() {
+<span class="fc" id="L105">		return endTime;</span>
+	}
+
+	public void setEndTime(LocalTime endTime) {
+<span class="fc" id="L109">		this.endTime = endTime;</span>
+<span class="fc" id="L110">	}</span>
+
+	/** Read-only view; use {@link #addAssignment} / {@link #removeAssignment} to change it. */
+	public Set&lt;CrewAssignment&gt; getAssignments() {
+<span class="fc" id="L114">		return Collections.unmodifiableSet(assignments);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

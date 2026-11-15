@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LanguageLinkAdvice.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.common.web</a> &gt; <span class="el_source">LanguageLinkAdvice.java</span></div><h1>LanguageLinkAdvice.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.common.web;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import jakarta.servlet.http.HttpServletRequest;
+
+/**
+ * Model attribute {@code langUrls} for the language switcher in {@code fragments/navbar}:
+ * one relative link per supported language that keeps the current query string
+ * ({@code ?tab=logs}, {@code ?status=}, {@code page}, {@code sort}...) and only replaces
+ * {@code lang} (a null query string gives {@code ?lang=xx}), e.g. {@code /sites?status=finished} -&gt; {@code ?status=finished&amp;lang=hr}.
+ *
+ * &lt;p&gt;The link is relative ({@code ?...}), so the browser keeps the current path. The query is
+ * copied as the browser sent it (already encoded), without decoding or re-encoding. Not limited to a
+ * package, so the error pages get it too; the template falls back to {@code ?lang=xx} without it.
+ */
+@ControllerAdvice
+<span class="fc" id="L24">public class LanguageLinkAdvice {</span>
+
+	/** Same parameter as the {@code LocaleChangeInterceptor} in {@code WebConfig}. */
+	static final String LANG_PARAM = &quot;lang&quot;;
+
+<span class="fc" id="L29">	static final List&lt;String&gt; LANGUAGES = List.of(&quot;en&quot;, &quot;hr&quot;);</span>
+
+	@ModelAttribute(&quot;langUrls&quot;)
+	public Map&lt;String, String&gt; langUrls(HttpServletRequest request) {
+<span class="fc" id="L33">		Map&lt;String, String&gt; urls = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L34">		LANGUAGES.forEach(lang -&gt; urls.put(lang, switchTo(request.getQueryString(), lang)));</span>
+<span class="fc" id="L35">		return urls;</span>
+	}
+
+	static String switchTo(String queryString, String lang) {
+<span class="fc" id="L39">		return UriComponentsBuilder.newInstance()</span>
+<span class="fc" id="L40">			.query(queryString)</span>
+<span class="fc" id="L41">			.replaceQueryParam(LANG_PARAM, lang)</span>
+<span class="fc" id="L42">			.build()</span>
+<span class="fc" id="L43">			.toUriString();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogAssembler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">DailyLogAssembler.java</span></div><h1>DailyLogAssembler.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Component;
+
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.crew.domain.Crew;
+import hr.algebra.sitelog.crew.repository.CrewRepository;
+import hr.algebra.sitelog.dailylog.domain.CrewAssignment;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.domain.WorkEntry;
+
+/**
+ * Applies commands to the entities of the DailyLog aggregate: synchronises the nested lists
+ * (update rows with an id, add rows without one, remove the missing ones; {@code orphanRemoval}
+ * deletes them at flush) and checks the crew of each row.
+ *
+ * &lt;p&gt;Runs inside the caller's transaction; the caller has already checked version and lock.
+ */
+@Component
+class DailyLogAssembler {
+
+	static final String CREW_INVALID = &quot;validation.crewAssignment.crew.invalid&quot;;
+
+	static final String CREW_DUPLICATE = &quot;validation.crewAssignment.crew.duplicate&quot;;
+
+	private final CrewRepository crews;
+
+<span class="fc" id="L39">	DailyLogAssembler(CrewRepository crews) {</span>
+<span class="fc" id="L40">		this.crews = crews;</span>
+<span class="fc" id="L41">	}</span>
+
+	/** Synchronises all work entries of a log with the form (path prefix {@code workEntries[i].}). */
+	void syncWorkEntries(DailyLog log, List&lt;WorkEntryCommand&gt; commands) {
+<span class="fc" id="L45">		Map&lt;Long, Crew&gt; crewCache = loadCrews(commands.stream().flatMap(c -&gt; c.crewAssignments().stream()).toList());</span>
+<span class="fc" id="L46">		Map&lt;Long, WorkEntry&gt; existing = log.getWorkEntries().stream()</span>
+<span class="fc" id="L47">			.collect(Collectors.toMap(WorkEntry::getId, Function.identity()));</span>
+<span class="fc" id="L48">		Set&lt;WorkEntry&gt; kept = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L49">		List&lt;WorkEntry&gt; ordered = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">		for (WorkEntryCommand command : commands) {</span>
+			WorkEntry entry;
+<span class="fc bfc" id="L52" title="All 2 branches covered.">			if (command.id() == null) {</span>
+<span class="fc" id="L53">				entry = new WorkEntry(command.description());</span>
+			}
+			else {
+<span class="fc" id="L56">				entry = existing.get(command.id());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">				if (entry == null) {</span>
+<span class="fc" id="L58">					throw new NotFoundException(WorkEntry.class, command.id());</span>
+				}
+<span class="fc" id="L60">				kept.add(entry);</span>
+			}
+<span class="fc" id="L62">			ordered.add(entry);</span>
+<span class="fc" id="L63">		}</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">		existing.values().stream().filter(entry -&gt; !kept.contains(entry)).toList().forEach(log::removeWorkEntry);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">		for (int i = 0; i &lt; commands.size(); i++) {</span>
+<span class="fc" id="L66">			WorkEntry entry = ordered.get(i);</span>
+<span class="fc" id="L67">			apply(entry, commands.get(i), &quot;workEntries[&quot; + i + &quot;].&quot;, crewCache);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">			if (entry.getDailyLog() == null) {</span>
+<span class="fc" id="L69">				log.addWorkEntry(entry);</span>
+			}
+		}
+<span class="fc" id="L72">	}</span>
+
+	/** Applies one work entry command (fields + crew rows) to a new or existing entry. */
+	void apply(WorkEntry entry, WorkEntryCommand command, String pathPrefix) {
+<span class="fc" id="L76">		apply(entry, command, pathPrefix, loadCrews(command.crewAssignments()));</span>
+<span class="fc" id="L77">	}</span>
+
+	private void apply(WorkEntry entry, WorkEntryCommand command, String pathPrefix, Map&lt;Long, Crew&gt; crewCache) {
+<span class="fc" id="L80">		entry.setDescription(command.description());</span>
+<span class="fc" id="L81">		entry.setLocation(command.location());</span>
+<span class="fc" id="L82">		entry.setStartTime(command.startTime());</span>
+<span class="fc" id="L83">		entry.setEndTime(command.endTime());</span>
+<span class="fc" id="L84">		syncAssignments(entry, command.crewAssignments(), pathPrefix, crewCache);</span>
+<span class="fc" id="L85">	}</span>
+
+	/**
+	 * Synchronises the crew rows of one entry. A new row for a crew whose old row is being removed
+	 * reuses that row: Hibernate flushes INSERTs before DELETEs, so &quot;remove crew A, add crew A&quot;
+	 * would otherwise hit {@code uk_crew_assignment_entry_crew}.
+	 */
+	private void syncAssignments(WorkEntry entry, List&lt;CrewAssignmentCommand&gt; commands, String pathPrefix,
+			Map&lt;Long, Crew&gt; crewCache) {
+<span class="fc" id="L94">		Map&lt;Long, CrewAssignment&gt; existing = entry.getAssignments().stream()</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">			.filter(a -&gt; a.getId() != null)</span>
+<span class="fc" id="L96">			.collect(Collectors.toMap(CrewAssignment::getId, Function.identity()));</span>
+<span class="fc" id="L97">		Set&lt;Long&gt; seenCrews = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L98">		Set&lt;CrewAssignment&gt; kept = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L99">		List&lt;CrewAssignment&gt; targets = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">		for (int j = 0; j &lt; commands.size(); j++) {</span>
+<span class="fc" id="L101">			CrewAssignmentCommand command = commands.get(j);</span>
+<span class="fc bfc" id="L102" title="All 4 branches covered.">			if (command.crewId() != null &amp;&amp; !seenCrews.add(command.crewId())) {</span>
+<span class="fc" id="L103">				throw new InvalidFieldException(crewPath(pathPrefix, j), CREW_DUPLICATE);</span>
+			}
+<span class="fc" id="L105">			CrewAssignment target = null;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">			if (command.id() != null) {</span>
+<span class="fc" id="L107">				target = existing.get(command.id());</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">				if (target == null) {</span>
+<span class="fc" id="L109">					throw new NotFoundException(CrewAssignment.class, command.id());</span>
+				}
+<span class="fc" id="L111">				kept.add(target);</span>
+			}
+<span class="fc" id="L113">			targets.add(target);</span>
+		}
+<span class="fc" id="L115">		List&lt;CrewAssignment&gt; leftovers = new ArrayList&lt;&gt;(</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">				existing.values().stream().filter(a -&gt; !kept.contains(a)).toList());</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">		for (int j = 0; j &lt; commands.size(); j++) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">			if (targets.get(j) == null) {</span>
+<span class="fc" id="L119">				Long crewId = commands.get(j).crewId();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">				for (CrewAssignment leftover : leftovers) {</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">					if (leftover.getCrew().getId().equals(crewId)) {</span>
+<span class="fc" id="L122">						leftovers.remove(leftover);</span>
+<span class="fc" id="L123">						targets.set(j, leftover);</span>
+<span class="fc" id="L124">						break;</span>
+					}
+<span class="nc" id="L126">				}</span>
+			}
+		}
+<span class="fc" id="L129">		leftovers.forEach(entry::removeAssignment);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">		for (int j = 0; j &lt; commands.size(); j++) {</span>
+<span class="fc" id="L131">			CrewAssignmentCommand command = commands.get(j);</span>
+<span class="fc" id="L132">			CrewAssignment target = targets.get(j);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">			Crew crew = resolveCrew(command.crewId(), target == null ? null : target.getCrew(),</span>
+<span class="fc" id="L134">					crewPath(pathPrefix, j), crewCache);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">			if (target == null) {</span>
+<span class="fc" id="L136">				entry.addAssignment(new CrewAssignment(crew, command.hoursWorked(), command.workerCount(), command.task()));</span>
+			}
+			else {
+<span class="fc" id="L139">				target.setCrew(crew);</span>
+<span class="fc" id="L140">				target.setHoursWorked(command.hoursWorked());</span>
+<span class="fc" id="L141">				target.setWorkerCount(command.workerCount());</span>
+<span class="fc" id="L142">				target.setTask(command.task());</span>
+			}
+		}
+<span class="fc" id="L145">	}</span>
+
+	/**
+	 * The crew of a row must exist and be active when it is newly chosen. A row that keeps its
+	 * current crew stays valid even if that crew was deactivated later (history is kept).
+	 */
+	Crew resolveCrew(Long crewId, Crew current, String path, Map&lt;Long, Crew&gt; crewCache) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		if (crewId == null) {</span>
+<span class="fc" id="L153">			throw new InvalidFieldException(path, CREW_INVALID);</span>
+		}
+<span class="fc bfc" id="L155" title="All 4 branches covered.">		if (current != null &amp;&amp; Objects.equals(current.getId(), crewId)) {</span>
+<span class="fc" id="L156">			return current;</span>
+		}
+<span class="fc" id="L158">		Crew crew = crewCache.computeIfAbsent(crewId, id -&gt; crews.findById(id).orElse(null));</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">		if (crew == null || !crew.isActive()) {</span>
+<span class="fc" id="L160">			throw new InvalidFieldException(path, CREW_INVALID);</span>
+		}
+<span class="fc" id="L162">		return crew;</span>
+	}
+
+	/** One query for all crews referenced by the form instead of one per row. */
+	Map&lt;Long, Crew&gt; loadCrews(List&lt;CrewAssignmentCommand&gt; commands) {
+<span class="fc" id="L167">		Set&lt;Long&gt; ids = commands.stream().map(CrewAssignmentCommand::crewId).filter(Objects::nonNull)</span>
+<span class="fc" id="L168">			.collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">		if (ids.isEmpty()) {</span>
+<span class="fc" id="L170">			return new HashMap&lt;&gt;();</span>
+		}
+<span class="fc" id="L172">		return crews.findAllById(ids).stream()</span>
+<span class="pc" id="L173">			.collect(Collectors.toMap(Crew::getId, Function.identity(), (a, b) -&gt; a, HashMap::new));</span>
+	}
+
+	private static String crewPath(String pathPrefix, int index) {
+<span class="fc" id="L177">		return pathPrefix + &quot;crewAssignments[&quot; + index + &quot;].crewId&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

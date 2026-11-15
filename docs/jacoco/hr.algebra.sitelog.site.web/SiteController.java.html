@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SiteController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.site.web</a> &gt; <span class="el_source">SiteController.java</span></div><h1>SiteController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.site.web;
+
+import java.util.Set;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.common.web.Pages;
+import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.site.service.SiteDetails;
+import hr.algebra.sitelog.site.service.SiteService;
+import hr.algebra.sitelog.site.service.SiteStatusFilter;
+
+/**
+ * Site screens: list with filter, detail (overview KPIs and the daily logs tab), New site /
+ * Site settings form and delete. Thin: form -&gt; service -&gt; redirect with flash (PRG).
+ */
+@Controller
+@RequestMapping(&quot;/sites&quot;)
+public class SiteController {
+
+	static final String LIST_VIEW = &quot;site/list&quot;;
+
+	static final String DETAIL_VIEW = &quot;site/detail&quot;;
+
+	static final String FORM_VIEW = &quot;site/form&quot;;
+
+	/** Tabs of the site detail (prototype pp. 29-33). */
+<span class="fc" id="L44">	static final Set&lt;String&gt; TABS = Set.of(&quot;overview&quot;, &quot;logs&quot;, &quot;incidents&quot;, &quot;compliance&quot;);</span>
+
+<span class="fc" id="L46">	private static final Set&lt;String&gt; SITE_SORT = Set.of(&quot;code&quot;, &quot;name&quot;, &quot;startDate&quot;);</span>
+
+<span class="fc" id="L48">	private static final Set&lt;String&gt; LOG_SORT = Set.of(&quot;logDate&quot;, &quot;status&quot;);</span>
+
+	private final SiteService siteService;
+
+	private final DailyLogService dailyLogService;
+
+<span class="fc" id="L54">	public SiteController(SiteService siteService, DailyLogService dailyLogService) {</span>
+<span class="fc" id="L55">		this.siteService = siteService;</span>
+<span class="fc" id="L56">		this.dailyLogService = dailyLogService;</span>
+<span class="fc" id="L57">	}</span>
+
+	@GetMapping
+	public String list(@RequestParam(name = &quot;q&quot;, required = false) String filter,
+			@RequestParam(name = &quot;status&quot;, required = false) String status,
+			@PageableDefault(size = 20) Pageable pageable, Model model) {
+<span class="fc" id="L63">		SiteStatusFilter statusFilter = SiteStatusFilter.fromParam(status);</span>
+<span class="fc" id="L64">		model.addAttribute(&quot;sites&quot;, siteService.list(filter, statusFilter,</span>
+<span class="fc" id="L65">				Pages.restrict(pageable, SITE_SORT, Sort.by(&quot;name&quot;))));</span>
+<span class="fc" id="L66">		model.addAttribute(&quot;q&quot;, filter);</span>
+<span class="fc" id="L67">		model.addAttribute(&quot;status&quot;, statusFilter);</span>
+<span class="fc" id="L68">		model.addAttribute(&quot;statuses&quot;, SiteStatusFilter.values());</span>
+<span class="fc" id="L69">		return LIST_VIEW;</span>
+	}
+
+	@GetMapping(&quot;/{id}&quot;)
+	public String detail(@PathVariable Long id, @RequestParam(name = &quot;tab&quot;, defaultValue = &quot;overview&quot;) String tab,
+			@PageableDefault(size = 20) Pageable pageable, Model model) {
+<span class="fc" id="L75">		SiteDetails site = siteService.get(id);</span>
+<span class="fc" id="L76">		model.addAttribute(&quot;site&quot;, site);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">		model.addAttribute(&quot;tab&quot;, TABS.contains(tab) ? tab : &quot;overview&quot;);</span>
+<span class="fc" id="L78">		model.addAttribute(&quot;logs&quot;, dailyLogService.listForSite(id,</span>
+<span class="fc" id="L79">				Pages.restrict(pageable, LOG_SORT, Sort.by(Sort.Direction.DESC, &quot;logDate&quot;))));</span>
+<span class="fc" id="L80">		model.addAttribute(&quot;contextTitle&quot;, site.name());</span>
+<span class="fc" id="L81">		return DETAIL_VIEW;</span>
+	}
+
+	@GetMapping(&quot;/new&quot;)
+	public String newForm(Model model) {
+<span class="fc" id="L86">		model.addAttribute(&quot;siteForm&quot;, new SiteForm());</span>
+<span class="fc" id="L87">		return form(model, null);</span>
+	}
+
+	@PostMapping
+	public String create(@Validated @ModelAttribute(&quot;siteForm&quot;) SiteForm form, BindingResult result, Model model,
+			RedirectAttributes redirect) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L95">				Long id = siteService.create(form.toCommand());</span>
+<span class="fc" id="L96">				Flash.success(redirect, &quot;site.flash.created&quot;, form.getName());</span>
+<span class="fc" id="L97">				return &quot;redirect:/sites/&quot; + id;</span>
+			}
+<span class="fc" id="L99">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L100">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L103">		return form(model, null);</span>
+	}
+
+	@GetMapping(&quot;/{id}/edit&quot;)
+	public String editForm(@PathVariable Long id, Model model) {
+<span class="fc" id="L108">		model.addAttribute(&quot;siteForm&quot;, SiteForm.from(siteService.get(id)));</span>
+<span class="fc" id="L109">		return form(model, id);</span>
+	}
+
+	@PostMapping(&quot;/{id}&quot;)
+	public String update(@PathVariable Long id, @Validated @ModelAttribute(&quot;siteForm&quot;) SiteForm form,
+			BindingResult result, Model model, RedirectAttributes redirect) {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L117">				siteService.update(id, form.toCommand());</span>
+<span class="fc" id="L118">				Flash.success(redirect, &quot;site.flash.updated&quot;, form.getName());</span>
+<span class="fc" id="L119">				return &quot;redirect:/sites/&quot; + id;</span>
+			}
+<span class="fc" id="L121">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L122">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L125">		return form(model, id);</span>
+	}
+
+	/** Delete (confirmed in a modal). A site with records stays; the user is told to set an end date. */
+	@PostMapping(&quot;/{id}/delete&quot;)
+	public String delete(@PathVariable Long id, RedirectAttributes redirect) {
+		try {
+<span class="fc" id="L132">			siteService.delete(id);</span>
+<span class="fc" id="L133">			Flash.success(redirect, &quot;site.flash.deleted&quot;);</span>
+<span class="fc" id="L134">			return &quot;redirect:/sites&quot;;</span>
+		}
+<span class="fc" id="L136">		catch (DeletionNotAllowedException e) {</span>
+<span class="fc" id="L137">			Flash.error(redirect, e.getMessageKey());</span>
+<span class="fc" id="L138">			return &quot;redirect:/sites/&quot; + id;</span>
+		}
+	}
+
+	private String form(Model model, Long siteId) {
+<span class="fc" id="L143">		model.addAttribute(&quot;siteId&quot;, siteId);</span>
+<span class="fc" id="L144">		model.addAttribute(&quot;managers&quot;, siteService.managerOptions());</span>
+<span class="fc" id="L145">		return FORM_VIEW;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Incident.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.domain</a> &gt; <span class="el_source">Incident.java</span></div><h1>Incident.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.domain;
+
+import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import hr.algebra.sitelog.common.domain.BaseEntity;
+import hr.algebra.sitelog.crew.domain.Crew;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.site.domain.Site;
+import hr.algebra.sitelog.user.domain.AppUser;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+/**
+ * Safety incident, aggregate root of {@link CorrectiveAction} ({@code cascade = ALL},
+ * {@code orphanRemoval = true}). Optimistic locking with {@link #version}, like DailyLog.
+ *
+ * &lt;p&gt;Relations: the daily log is &lt;b&gt;optional&lt;/b&gt; (an incident may be reported without a log of
+ * that day); affected crews are a plain {@code @ManyToMany} because the link has no attributes
+ * (unlike {@code CrewAssignment}).
+ */
+@Entity
+@Table(name = &quot;incident&quot;)
+public class Incident extends BaseEntity {
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;site_id&quot;, nullable = false)
+	private Site site;
+
+	/** Optional relation: {@code daily_log_id} is nullable. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = &quot;daily_log_id&quot;)
+	private DailyLog dailyLog;
+
+	@Column(name = &quot;occurred_at&quot;, nullable = false)
+	private Instant occurredAt;
+
+	@Column(name = &quot;title&quot;, nullable = false, length = 200)
+	private String title;
+
+	@Column(name = &quot;description&quot;, nullable = false)
+	private String description;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = &quot;severity&quot;, nullable = false, length = 10)
+	private Severity severity;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = &quot;category&quot;, nullable = false, length = 30)
+	private IncidentCategory category;
+
+<span class="fc" id="L66">	@Enumerated(EnumType.STRING)</span>
+	@Column(name = &quot;status&quot;, nullable = false, length = 20)
+	private IncidentStatus status = IncidentStatus.REPORTED;
+
+	// AR2: required for HIGH/CRITICAL before SIGNED_OFF (ck_incident_severity_fields).
+	@Column(name = &quot;root_cause&quot;)
+	private String rootCause;
+
+	@Column(name = &quot;witnesses&quot;)
+	private String witnesses;
+
+	@Column(name = &quot;medical_treatment&quot;)
+	private String medicalTreatment;
+
+	@Column(name = &quot;authority_notified&quot;)
+	private Boolean authorityNotified;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;reported_by&quot;, nullable = false)
+	private AppUser reportedBy;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = &quot;signed_off_by&quot;)
+	private AppUser signedOffBy;
+
+	@Column(name = &quot;signed_off_at&quot;)
+	private Instant signedOffAt;
+
+	@Version
+	@Column(name = &quot;version&quot;, nullable = false)
+	private Long version;
+
+<span class="fc" id="L98">	@ManyToMany(fetch = FetchType.LAZY)</span>
+	@JoinTable(name = &quot;incident_affected_crew&quot;,
+			joinColumns = @JoinColumn(name = &quot;incident_id&quot;),
+			inverseJoinColumns = @JoinColumn(name = &quot;crew_id&quot;))
+	@OrderBy(&quot;name ASC&quot;)
+	private Set&lt;Crew&gt; affectedCrews = new LinkedHashSet&lt;&gt;();
+
+	/** A Set for the same reason as {@code DailyLog.workEntries}: fetched together with affected crews. */
+<span class="fc" id="L106">	@OneToMany(mappedBy = &quot;incident&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+	@OrderBy(&quot;dueDate ASC, id ASC&quot;)
+	private Set&lt;CorrectiveAction&gt; correctiveActions = new LinkedHashSet&lt;&gt;();
+
+<span class="fc" id="L110">	protected Incident() {</span>
+<span class="fc" id="L111">	}</span>
+
+	public Incident(Site site, Instant occurredAt, String title, String description, Severity severity,
+<span class="fc" id="L114">			IncidentCategory category, AppUser reportedBy) {</span>
+<span class="fc" id="L115">		this.site = site;</span>
+<span class="fc" id="L116">		this.occurredAt = occurredAt;</span>
+<span class="fc" id="L117">		this.title = title;</span>
+<span class="fc" id="L118">		this.description = description;</span>
+<span class="fc" id="L119">		this.severity = severity;</span>
+<span class="fc" id="L120">		this.category = category;</span>
+<span class="fc" id="L121">		this.reportedBy = reportedBy;</span>
+<span class="fc" id="L122">	}</span>
+
+	public void addCorrectiveAction(CorrectiveAction action) {
+<span class="fc" id="L125">		correctiveActions.add(action);</span>
+<span class="fc" id="L126">		action.setIncident(this);</span>
+<span class="fc" id="L127">	}</span>
+
+	public void removeCorrectiveAction(CorrectiveAction action) {
+<span class="nc" id="L130">		correctiveActions.remove(action);</span>
+<span class="nc" id="L131">		action.setIncident(null);</span>
+<span class="nc" id="L132">	}</span>
+
+	public void addAffectedCrew(Crew crew) {
+<span class="fc" id="L135">		affectedCrews.add(crew);</span>
+<span class="fc" id="L136">	}</span>
+
+	public void removeAffectedCrew(Crew crew) {
+<span class="nc" id="L139">		affectedCrews.remove(crew);</span>
+<span class="nc" id="L140">	}</span>
+
+	public Site getSite() {
+<span class="fc" id="L143">		return site;</span>
+	}
+
+	public DailyLog getDailyLog() {
+<span class="fc" id="L147">		return dailyLog;</span>
+	}
+
+	public void setDailyLog(DailyLog dailyLog) {
+<span class="nc" id="L151">		this.dailyLog = dailyLog;</span>
+<span class="nc" id="L152">	}</span>
+
+	public Instant getOccurredAt() {
+<span class="nc" id="L155">		return occurredAt;</span>
+	}
+
+	public void setOccurredAt(Instant occurredAt) {
+<span class="nc" id="L159">		this.occurredAt = occurredAt;</span>
+<span class="nc" id="L160">	}</span>
+
+	public String getTitle() {
+<span class="fc" id="L163">		return title;</span>
+	}
+
+	public void setTitle(String title) {
+<span class="nc" id="L167">		this.title = title;</span>
+<span class="nc" id="L168">	}</span>
+
+	public String getDescription() {
+<span class="nc" id="L171">		return description;</span>
+	}
+
+	public void setDescription(String description) {
+<span class="nc" id="L175">		this.description = description;</span>
+<span class="nc" id="L176">	}</span>
+
+	public Severity getSeverity() {
+<span class="nc" id="L179">		return severity;</span>
+	}
+
+	public void setSeverity(Severity severity) {
+<span class="nc" id="L183">		this.severity = severity;</span>
+<span class="nc" id="L184">	}</span>
+
+	public IncidentCategory getCategory() {
+<span class="nc" id="L187">		return category;</span>
+	}
+
+	public void setCategory(IncidentCategory category) {
+<span class="nc" id="L191">		this.category = category;</span>
+<span class="nc" id="L192">	}</span>
+
+	public IncidentStatus getStatus() {
+<span class="fc" id="L195">		return status;</span>
+	}
+
+	public void setStatus(IncidentStatus status) {
+<span class="nc" id="L199">		this.status = status;</span>
+<span class="nc" id="L200">	}</span>
+
+	public String getRootCause() {
+<span class="nc" id="L203">		return rootCause;</span>
+	}
+
+	public void setRootCause(String rootCause) {
+<span class="nc" id="L207">		this.rootCause = rootCause;</span>
+<span class="nc" id="L208">	}</span>
+
+	public String getWitnesses() {
+<span class="nc" id="L211">		return witnesses;</span>
+	}
+
+	public void setWitnesses(String witnesses) {
+<span class="nc" id="L215">		this.witnesses = witnesses;</span>
+<span class="nc" id="L216">	}</span>
+
+	public String getMedicalTreatment() {
+<span class="nc" id="L219">		return medicalTreatment;</span>
+	}
+
+	public void setMedicalTreatment(String medicalTreatment) {
+<span class="nc" id="L223">		this.medicalTreatment = medicalTreatment;</span>
+<span class="nc" id="L224">	}</span>
+
+	public Boolean getAuthorityNotified() {
+<span class="nc" id="L227">		return authorityNotified;</span>
+	}
+
+	public void setAuthorityNotified(Boolean authorityNotified) {
+<span class="nc" id="L231">		this.authorityNotified = authorityNotified;</span>
+<span class="nc" id="L232">	}</span>
+
+	public AppUser getReportedBy() {
+<span class="fc" id="L235">		return reportedBy;</span>
+	}
+
+	public AppUser getSignedOffBy() {
+<span class="fc" id="L239">		return signedOffBy;</span>
+	}
+
+	public void setSignedOffBy(AppUser signedOffBy) {
+<span class="nc" id="L243">		this.signedOffBy = signedOffBy;</span>
+<span class="nc" id="L244">	}</span>
+
+	public Instant getSignedOffAt() {
+<span class="nc" id="L247">		return signedOffAt;</span>
+	}
+
+	public void setSignedOffAt(Instant signedOffAt) {
+<span class="nc" id="L251">		this.signedOffAt = signedOffAt;</span>
+<span class="nc" id="L252">	}</span>
+
+	public Long getVersion() {
+<span class="fc" id="L255">		return version;</span>
+	}
+
+	public Set&lt;Crew&gt; getAffectedCrews() {
+<span class="fc" id="L259">		return Collections.unmodifiableSet(affectedCrews);</span>
+	}
+
+	public Set&lt;CorrectiveAction&gt; getCorrectiveActions() {
+<span class="fc" id="L263">		return Collections.unmodifiableSet(correctiveActions);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

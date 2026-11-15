@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">DailyLogService.java</span></div><h1>DailyLogService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZonedDateTime;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.InvalidTransitionException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.domain.LogStatus;
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.dailylog.repository.DailyLogSummary;
+import hr.algebra.sitelog.dailylog.repository.LogReopenRequestRepository;
+import hr.algebra.sitelog.incident.repository.IncidentRepository;
+import hr.algebra.sitelog.site.domain.Site;
+import hr.algebra.sitelog.site.repository.SiteRepository;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * The DailyLog aggregate as a whole: list, detail, create / update / delete of the log with its
+ * nested work entries and crew rows (one form, as in the prototype), and the sign-off.
+ *
+ * &lt;p&gt;Rules:
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;AR1 part 1 - lock after sign-off.&lt;/b&gt; Every write checks {@link LogStatus#isEditable()}
+ * first and throws {@code LogLockedException} (409); the V3 trigger rejects the same writes in the
+ * database. Reopen with reason and approval is milestone M3.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Optimistic locking.&lt;/b&gt; The form sends the version it was loaded with; a different
+ * current version, or a concurrent commit caught by {@code @Version}, ends as
+ * {@code ObjectOptimisticLockingFailureException} (409). Because an update may change only
+ * children, the root is loaded with {@code OPTIMISTIC_FORCE_INCREMENT} (ADR-0001 item 6).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Delete&lt;/b&gt; (decided 07/11): only a DRAFT log with no incident and no reopen request;
+ * its work entries and crew rows go with it (cascade, they are part of the aggregate).&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+@Transactional(readOnly = true)
+public class DailyLogService {
+
+	public static final String DATE_DUPLICATE = &quot;validation.dailyLog.date.duplicate&quot;;
+
+	public static final String DATE_FUTURE = &quot;validation.dailyLog.date.future&quot;;
+
+	public static final String DELETE_NOT_DRAFT = &quot;dailyLog.flash.deleteBlocked.status&quot;;
+
+	public static final String DELETE_LINKED = &quot;dailyLog.flash.deleteBlocked.linked&quot;;
+
+	public static final String ALREADY_SIGNED_OFF = &quot;dailyLog.flash.alreadySignedOff&quot;;
+
+	public static final String SIGN_OFF_EMPTY = &quot;dailyLog.flash.signOffEmpty&quot;;
+
+	private final DailyLogRepository dailyLogs;
+
+	private final SiteRepository sites;
+
+	private final IncidentRepository incidents;
+
+	private final LogReopenRequestRepository reopenRequests;
+
+	private final AppUserRepository users;
+
+	private final CurrentUserProvider currentUser;
+
+	private final DailyLogAssembler assembler;
+
+	private final Clock clock;
+
+	public DailyLogService(DailyLogRepository dailyLogs, SiteRepository sites, IncidentRepository incidents,
+			LogReopenRequestRepository reopenRequests, AppUserRepository users, CurrentUserProvider currentUser,
+<span class="fc" id="L79">			DailyLogAssembler assembler, Clock clock) {</span>
+<span class="fc" id="L80">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L81">		this.sites = sites;</span>
+<span class="fc" id="L82">		this.incidents = incidents;</span>
+<span class="fc" id="L83">		this.reopenRequests = reopenRequests;</span>
+<span class="fc" id="L84">		this.users = users;</span>
+<span class="fc" id="L85">		this.currentUser = currentUser;</span>
+<span class="fc" id="L86">		this.assembler = assembler;</span>
+<span class="fc" id="L87">		this.clock = clock;</span>
+<span class="fc" id="L88">	}</span>
+
+	/**
+	 * A site's log list with work entry count, crew count and crew hours per row, computed by one
+	 * aggregate query (the N+1 fix, see {@code docs/performance.md}).
+	 */
+	public Page&lt;DailyLogSummary&gt; listForSite(Long siteId, Pageable pageable) {
+<span class="fc" id="L95">		return dailyLogs.findSummariesBySiteId(siteId, pageable);</span>
+	}
+
+	/** Detail page: the whole aggregate in one SQL statement ({@code findDetailById}). */
+	public DailyLogDetails getDetail(Long id) {
+<span class="fc" id="L100">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L101">		return toDetails(log, isDeletable(log));</span>
+	}
+
+	/** Same data as the detail, refused for a locked log (the edit form is not offered). */
+	public DailyLogDetails getForEdit(Long id) {
+<span class="pc" id="L106">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L107">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L108">		return toDetails(log, isDeletable(log));</span>
+	}
+
+	/** Header of the child pages (work entry / crew assignment forms). */
+	public DailyLogHeader getHeader(Long id) {
+<span class="fc" id="L113">		return dailyLogs.findWithSiteById(id).map(DailyLogHeader::of)</span>
+<span class="fc" id="L114">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+	}
+
+	/** Header for a page that changes a child (new / edit work entry or crew row): refused when locked. */
+	public DailyLogHeader getHeaderForChange(Long id) {
+<span class="pc" id="L119">		DailyLog log = dailyLogs.findWithSiteById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L120">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L121">		return DailyLogHeader.of(log);</span>
+	}
+
+	@Transactional
+	public Long create(Long siteId, DailyLogCommand command) {
+<span class="fc" id="L126">		Site site = sites.findById(siteId).orElseThrow(() -&gt; new NotFoundException(Site.class, siteId));</span>
+<span class="fc" id="L127">		checkDate(command.logDate());</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDate(siteId, command.logDate())) {</span>
+<span class="fc" id="L129">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
+		}
+<span class="fc" id="L131">		DailyLog log = new DailyLog(site, command.logDate());</span>
+<span class="fc" id="L132">		log.setWeather(command.weather());</span>
+<span class="fc" id="L133">		log.setNotes(command.notes());</span>
+<span class="fc" id="L134">		assembler.syncWorkEntries(log, command.workEntries());</span>
+<span class="fc" id="L135">		return dailyLogs.save(log).getId();</span>
+	}
+
+	@Transactional
+	public void update(Long id, Long expectedVersion, DailyLogCommand command) {
+		// 1) registers OPTIMISTIC_FORCE_INCREMENT on the root: version + 1 at commit even if only children change
+<span class="fc" id="L141">		DailyLog log = dailyLogs.findForChildUpdateById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+		// 2) same managed instance, now with work entries, assignments and crews initialised
+<span class="fc" id="L143">		dailyLogs.findDetailById(id);</span>
+<span class="fc" id="L144">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc" id="L145">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L146">		checkDate(command.logDate());</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDateAndIdNot(log.getSite().getId(), command.logDate(), id)) {</span>
+<span class="fc" id="L148">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
+		}
+<span class="fc" id="L150">		log.setLogDate(command.logDate());</span>
+<span class="fc" id="L151">		log.setWeather(command.weather());</span>
+<span class="fc" id="L152">		log.setNotes(command.notes());</span>
+<span class="fc" id="L153">		assembler.syncWorkEntries(log, command.workEntries());</span>
+<span class="fc" id="L154">	}</span>
+
+	/** Deletes a DRAFT log with its work entries and crew rows; returns the site id for the redirect. */
+	@Transactional
+	public Long delete(Long id, Long expectedVersion) {
+<span class="fc" id="L159">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L160">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc" id="L161">		DailyLogRules.requireEditable(log);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (log.getStatus() != LogStatus.DRAFT) {</span>
+<span class="fc" id="L163">			throw new DeletionNotAllowedException(DELETE_NOT_DRAFT, &quot;daily_log &quot; + id + &quot; is &quot; + log.getStatus());</span>
+		}
+<span class="fc bfc" id="L165" title="All 4 branches covered.">		if (incidents.existsByDailyLog_Id(id) || reopenRequests.existsByDailyLog_Id(id)) {</span>
+<span class="fc" id="L166">			throw new DeletionNotAllowedException(DELETE_LINKED, &quot;daily_log &quot; + id + &quot; is referenced&quot;);</span>
+		}
+<span class="fc" id="L168">		Long siteId = log.getSite().getId();</span>
+<span class="fc" id="L169">		dailyLogs.delete(log);</span>
+<span class="fc" id="L170">		return siteId;</span>
+	}
+
+	/**
+	 * Sign-off: DRAFT or REOPENED -&gt; SIGNED_OFF, recording who and when. From then on the log is
+	 * locked. Two concurrent sign-offs (or a sign-off racing an edit) both load version N; the
+	 * first commit makes it N + 1, the second UPDATE ... WHERE version = N matches no row and
+	 * fails with 409. Role checks ({@code @PreAuthorize}, own site) come in M3.
+	 */
+	@Transactional
+	public void signOff(Long id, Long expectedVersion) {
+<span class="fc" id="L181">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L182">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">		if (log.getStatus() == LogStatus.SIGNED_OFF) {</span>
+<span class="fc" id="L184">			throw new InvalidTransitionException(ALREADY_SIGNED_OFF, &quot;daily_log &quot; + id + &quot; is already SIGNED_OFF&quot;);</span>
+		}
+<span class="fc bfc" id="L186" title="All 2 branches covered.">		if (log.getWorkEntries().isEmpty()) {</span>
+<span class="fc" id="L187">			throw new InvalidTransitionException(SIGN_OFF_EMPTY, &quot;daily_log &quot; + id + &quot; has no work entries&quot;);</span>
+		}
+<span class="fc" id="L189">		log.setStatus(LogStatus.SIGNED_OFF);</span>
+<span class="fc" id="L190">		log.setSignedOffBy(users.getReferenceById(currentUser.currentUserId()));</span>
+<span class="fc" id="L191">		log.setSignedOffAt(Instant.now(clock));</span>
+<span class="fc" id="L192">	}</span>
+
+	/** A log records work that happened: its date cannot be after today (in the sites' zone). */
+	private void checkDate(LocalDate logDate) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">		if (logDate.isAfter(LocalDate.now(clock))) {</span>
+<span class="fc" id="L197">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_FUTURE);</span>
+		}
+<span class="fc" id="L199">	}</span>
+
+	private boolean isDeletable(DailyLog log) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">		return log.getStatus() == LogStatus.DRAFT</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">				&amp;&amp; !incidents.existsByDailyLog_Id(log.getId())</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">				&amp;&amp; !reopenRequests.existsByDailyLog_Id(log.getId());</span>
+	}
+
+	private DailyLogDetails toDetails(DailyLog log, boolean deletable) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">		ZonedDateTime signedOffAt = log.getSignedOffAt() == null ? null</span>
+<span class="fc" id="L209">				: log.getSignedOffAt().atZone(clock.getZone());</span>
+<span class="fc" id="L210">		return new DailyLogDetails(log.getId(), log.getSite().getId(), log.getSite().getCode(),</span>
+<span class="fc" id="L211">				log.getSite().getName(), log.getLogDate(), log.getStatus(), log.getRevision(), log.getWeather(),</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">				log.getNotes(), log.getSignedOffBy() == null ? null : log.getSignedOffBy().getFullName(),</span>
+<span class="fc" id="L213">				signedOffAt, log.getVersion(), log.getStatus().isEditable(), deletable,</span>
+<span class="fc" id="L214">				log.getWorkEntries().stream().map(WorkEntryView::of).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

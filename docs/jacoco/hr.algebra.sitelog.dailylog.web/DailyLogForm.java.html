@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogForm.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.web</a> &gt; <span class="el_source">DailyLogForm.java</span></div><h1>DailyLogForm.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.web;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.format.annotation.DateTimeFormat;
+
+import hr.algebra.sitelog.dailylog.domain.Weather;
+import hr.algebra.sitelog.dailylog.service.DailyLogCommand;
+import hr.algebra.sitelog.dailylog.service.DailyLogDetails;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/**
+ * Backing object of {@code dailylog/form}: the log and, nested as in the prototype, its work
+ * entries ({@code workEntries[i]}) each with its crew rows ({@code workEntries[i].crewAssignments[j]}).
+ * {@code @Valid} on the element type ({@code List&lt;@Valid WorkEntryForm&gt;}) cascades validation into
+ * both lists; the error paths stay {@code workEntries[i].crewAssignments[j].hoursWorked}.
+ *
+ * &lt;p&gt;{@link #version} is the log version the form was loaded with (hidden field); the service
+ * refuses the save when the log changed in the meantime (409).
+ */
+<span class="fc" id="L27">public class DailyLogForm {</span>
+
+	private Long version;
+
+	@NotNull(message = &quot;{validation.dailyLog.date.required}&quot;)
+	@DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+	private LocalDate logDate;
+
+	private Weather weather;
+
+	@Size(max = 4000, message = &quot;{validation.size.max}&quot;)
+	private String notes;
+
+<span class="fc" id="L40">	@NotEmpty(message = &quot;{validation.dailyLog.workEntries.required}&quot;)</span>
+	private List&lt;@Valid WorkEntryForm&gt; workEntries = new ArrayList&lt;&gt;();
+
+	/** New log for a date, with one empty work entry and one empty crew row. */
+	public static DailyLogForm blank(LocalDate logDate) {
+<span class="fc" id="L45">		DailyLogForm form = new DailyLogForm();</span>
+<span class="fc" id="L46">		form.logDate = logDate;</span>
+<span class="fc" id="L47">		form.workEntries.add(WorkEntryForm.blank());</span>
+<span class="fc" id="L48">		return form;</span>
+	}
+
+	public static DailyLogForm from(DailyLogDetails log) {
+<span class="fc" id="L52">		DailyLogForm form = new DailyLogForm();</span>
+<span class="fc" id="L53">		form.version = log.version();</span>
+<span class="fc" id="L54">		form.logDate = log.logDate();</span>
+<span class="fc" id="L55">		form.weather = log.weather();</span>
+<span class="fc" id="L56">		form.notes = log.notes();</span>
+<span class="fc" id="L57">		log.workEntries().forEach(entry -&gt; form.workEntries.add(WorkEntryForm.from(entry)));</span>
+<span class="fc" id="L58">		return form;</span>
+	}
+
+	public DailyLogCommand toCommand() {
+<span class="fc" id="L62">		return new DailyLogCommand(logDate, weather, notes,</span>
+<span class="fc" id="L63">				workEntries.stream().filter(Objects::nonNull).map(WorkEntryForm::toCommand).toList());</span>
+	}
+
+	List&lt;Long&gt; selectedCrewIds() {
+<span class="fc" id="L67">		return workEntries.stream().filter(Objects::nonNull).flatMap(entry -&gt; entry.selectedCrewIds().stream())</span>
+<span class="fc" id="L68">			.toList();</span>
+	}
+
+	/**
+	 * Row buttons: {@code addEntry}, {@code removeEntry-&lt;i&gt;}, {@code addCrew-&lt;i&gt;},
+	 * {@code removeCrew-&lt;i&gt;-&lt;j&gt;}. Returns false for an unknown action.
+	 */
+	boolean applyRowAction(String action) {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">		if (&quot;addEntry&quot;.equals(action)) {</span>
+<span class="fc" id="L77">			workEntries.add(WorkEntryForm.blank());</span>
+<span class="fc" id="L78">			return true;</span>
+		}
+<span class="fc" id="L80">		int i = RowActions.index(action, 1);</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">		boolean validEntry = i &gt;= 0 &amp;&amp; i &lt; workEntries.size();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">		if (action.startsWith(&quot;removeEntry-&quot;)) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">			if (validEntry) {</span>
+<span class="fc" id="L84">				workEntries.remove(i);</span>
+			}
+<span class="fc" id="L86">			return true;</span>
+		}
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (action.startsWith(&quot;addCrew-&quot;)) {</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">			if (validEntry) {</span>
+<span class="fc" id="L90">				workEntries.get(i).applyRowAction(&quot;addCrew&quot;);</span>
+			}
+<span class="fc" id="L92">			return true;</span>
+		}
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">		if (action.startsWith(&quot;removeCrew-&quot;)) {</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">			if (validEntry) {</span>
+<span class="fc" id="L96">				workEntries.get(i).applyRowAction(&quot;removeCrew-&quot; + RowActions.index(action, 2));</span>
+			}
+<span class="fc" id="L98">			return true;</span>
+		}
+<span class="nc" id="L100">		return false;</span>
+	}
+
+	/** Drops holes left by rows removed in the browser. */
+	void compact() {
+<span class="fc" id="L105">		workEntries.removeIf(Objects::isNull);</span>
+<span class="fc" id="L106">		workEntries.forEach(WorkEntryForm::compact);</span>
+<span class="fc" id="L107">	}</span>
+
+	public Long getVersion() {
+<span class="fc" id="L110">		return version;</span>
+	}
+
+	public void setVersion(Long version) {
+<span class="fc" id="L114">		this.version = version;</span>
+<span class="fc" id="L115">	}</span>
+
+	public LocalDate getLogDate() {
+<span class="fc" id="L118">		return logDate;</span>
+	}
+
+	public void setLogDate(LocalDate logDate) {
+<span class="fc" id="L122">		this.logDate = logDate;</span>
+<span class="fc" id="L123">	}</span>
+
+	public Weather getWeather() {
+<span class="fc" id="L126">		return weather;</span>
+	}
+
+	public void setWeather(Weather weather) {
+<span class="fc" id="L130">		this.weather = weather;</span>
+<span class="fc" id="L131">	}</span>
+
+	public String getNotes() {
+<span class="fc" id="L134">		return notes;</span>
+	}
+
+	public void setNotes(String notes) {
+<span class="fc" id="L138">		this.notes = notes;</span>
+<span class="fc" id="L139">	}</span>
+
+	public List&lt;WorkEntryForm&gt; getWorkEntries() {
+<span class="fc" id="L142">		return workEntries;</span>
+	}
+
+	public void setWorkEntries(List&lt;WorkEntryForm&gt; workEntries) {
+<span class="nc" id="L146">		this.workEntries = workEntries;</span>
+<span class="nc" id="L147">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

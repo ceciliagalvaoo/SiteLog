@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.notification.domain</a> &gt; <span class="el_source">NotificationType.java</span></div><h1>NotificationType.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.notification.domain;
+
+/** What produced the notification. Values match {@code ck_notification_type} in V6. */
+<span class="fc" id="L4">public enum NotificationType {</span>
+	/** Scheduled job: a corrective action passed its due date. Sent to the assignee. */
+<span class="fc" id="L6">	CORRECTIVE_ACTION_OVERDUE,</span>
+	/** Scheduled job: a daily log is still unsigned more than 24 h after its day. Sent to the site manager. */
+<span class="fc" id="L8">	DAILY_LOG_UNSIGNED,</span>
+	/** Domain event: a site manager asked to reopen a signed-off log. Sent to safety supervisors. */
+<span class="fc" id="L10">	REOPEN_REQUESTED,</span>
+	/** Domain event: a HIGH or CRITICAL incident was reported. Sent to safety supervisors. */
+<span class="fc" id="L12">	HIGH_SEVERITY_INCIDENT</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

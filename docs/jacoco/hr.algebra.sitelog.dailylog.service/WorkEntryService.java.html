@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">WorkEntryService.java</span></div><h1>WorkEntryService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.domain.WorkEntry;
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.dailylog.repository.WorkEntryRepository;
+
+/**
+ * One work entry of a log at a time (work entry page, and the REST endpoints in M3).
+ *
+ * &lt;p&gt;Every write loads the parent log with {@code findForChildUpdateById}
+ * ({@code OPTIMISTIC_FORCE_INCREMENT}): the change touches only {@code work_entry} /
+ * {@code crew_assignment}, but {@code daily_log.version} still goes up, so a concurrent edit of
+ * the same log - on any child - conflicts (ADR-0001 item 6). Then the version the user saw and
+ * the lock after sign-off are checked, as for the log itself.
+ */
+@Service
+@Transactional(readOnly = true)
+public class WorkEntryService {
+
+	private final DailyLogRepository dailyLogs;
+
+	private final WorkEntryRepository workEntries;
+
+	private final DailyLogAssembler assembler;
+
+	public WorkEntryService(DailyLogRepository dailyLogs, WorkEntryRepository workEntries,
+<span class="fc" id="L32">			DailyLogAssembler assembler) {</span>
+<span class="fc" id="L33">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L34">		this.workEntries = workEntries;</span>
+<span class="fc" id="L35">		this.assembler = assembler;</span>
+<span class="fc" id="L36">	}</span>
+
+	public WorkEntryView get(Long dailyLogId, Long workEntryId) {
+<span class="fc" id="L39">		return WorkEntryView.of(loadEntry(dailyLogId, workEntryId));</span>
+	}
+
+	@Transactional
+	public Long create(Long dailyLogId, Long expectedLogVersion, WorkEntryCommand command) {
+<span class="fc" id="L44">		DailyLog log = loadLogForChange(dailyLogId, expectedLogVersion);</span>
+<span class="fc" id="L45">		WorkEntry entry = new WorkEntry(command.description());</span>
+<span class="fc" id="L46">		assembler.apply(entry, command, &quot;&quot;);</span>
+<span class="fc" id="L47">		log.addWorkEntry(entry);</span>
+<span class="fc" id="L48">		return workEntries.save(entry).getId();</span>
+	}
+
+	@Transactional
+	public void update(Long dailyLogId, Long workEntryId, Long expectedLogVersion, WorkEntryCommand command) {
+<span class="fc" id="L53">		loadLogForChange(dailyLogId, expectedLogVersion);</span>
+<span class="fc" id="L54">		assembler.apply(loadEntry(dailyLogId, workEntryId), command, &quot;&quot;);</span>
+<span class="fc" id="L55">	}</span>
+
+	/** Removes the entry; {@code orphanRemoval} deletes it and its crew rows at flush. */
+	@Transactional
+	public void delete(Long dailyLogId, Long workEntryId, Long expectedLogVersion) {
+<span class="fc" id="L60">		DailyLog log = loadLogForChange(dailyLogId, expectedLogVersion);</span>
+<span class="fc" id="L61">		log.removeWorkEntry(loadEntry(dailyLogId, workEntryId));</span>
+<span class="fc" id="L62">	}</span>
+
+	private DailyLog loadLogForChange(Long dailyLogId, Long expectedLogVersion) {
+<span class="fc" id="L65">		DailyLog log = dailyLogs.findForChildUpdateById(dailyLogId)</span>
+<span class="fc" id="L66">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, dailyLogId));</span>
+<span class="fc" id="L67">		DailyLogRules.requireVersion(log, expectedLogVersion);</span>
+<span class="fc" id="L68">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L69">		return log;</span>
+	}
+
+	/** The entry with its crew rows, only if it belongs to the log in the URL. */
+	private WorkEntry loadEntry(Long dailyLogId, Long workEntryId) {
+<span class="fc" id="L74">		return workEntries.findDetailById(workEntryId)</span>
+<span class="fc" id="L75">			.filter(entry -&gt; entry.getDailyLog().getId().equals(dailyLogId))</span>
+<span class="fc" id="L76">			.orElseThrow(() -&gt; new NotFoundException(WorkEntry.class, workEntryId));</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

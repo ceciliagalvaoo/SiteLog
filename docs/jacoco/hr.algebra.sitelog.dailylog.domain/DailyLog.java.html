@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLog.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.domain</a> &gt; <span class="el_source">DailyLog.java</span></div><h1>DailyLog.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.domain;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.RelationTargetAuditMode;
+
+import hr.algebra.sitelog.common.domain.BaseEntity;
+import hr.algebra.sitelog.site.domain.Site;
+import hr.algebra.sitelog.user.domain.AppUser;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+/**
+ * Aggregate root of {@code DailyLog -&gt; WorkEntry -&gt; CrewAssignment} (ADR-0001 item 3): the log
+ * owns its work entries ({@code cascade = ALL}, {@code orphanRemoval = true}), each work entry
+ * owns its crew assignments.
+ *
+ * &lt;p&gt;{@link #version} gives optimistic locking (409 on a stale write). Changes to children do
+ * not bump it by themselves, so services that change a child load the log with
+ * {@code LockModeType.OPTIMISTIC_FORCE_INCREMENT} ({@code DailyLogRepository#findForChildUpdateById}).
+ *
+ * &lt;p&gt;Audited by Envers (ADR-0003). Associations to reference data are {@code NOT_AUDITED}: the
+ * audit row keeps the foreign key, the site/user itself is not audited.
+ */
+@Entity
+@Table(name = &quot;daily_log&quot;)
+@Audited
+public class DailyLog extends BaseEntity {
+
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = &quot;site_id&quot;, nullable = false)
+	private Site site;
+
+	/** One log per site and day ({@code uk_daily_log_site_date}). */
+	@Column(name = &quot;log_date&quot;, nullable = false)
+	private LocalDate logDate;
+
+<span class="fc" id="L54">	@Enumerated(EnumType.STRING)</span>
+	@Column(name = &quot;status&quot;, nullable = false, length = 20)
+	private LogStatus status = LogStatus.DRAFT;
+
+	/** Number of approved reopens; the lock trigger only lets SIGNED_OFF -&gt; REOPENED through with +1. */
+	@Column(name = &quot;revision&quot;, nullable = false)
+	private int revision;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = &quot;weather&quot;, length = 20)
+	private Weather weather;
+
+	@Column(name = &quot;notes&quot;)
+	private String notes;
+
+	@Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = &quot;signed_off_by&quot;)
+	private AppUser signedOffBy;
+
+	@Column(name = &quot;signed_off_at&quot;)
+	private Instant signedOffAt;
+
+	/** Not audited by Envers (default {@code do_not_audit_optimistic_locking_field=true}). */
+	@Version
+	@Column(name = &quot;version&quot;, nullable = false)
+	private Long version;
+
+	/**
+	 * A {@code Set}, not a {@code List}: the detail query join-fetches work entries and their
+	 * assignments together; with a List (a &quot;bag&quot;) each work entry would appear once per
+	 * assignment row of the SQL result. {@code @OrderBy} makes Hibernate use an ordered set.
+	 */
+<span class="fc" id="L87">	@OneToMany(mappedBy = &quot;dailyLog&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+	@OrderBy(&quot;startTime ASC, id ASC&quot;)
+	private Set&lt;WorkEntry&gt; workEntries = new LinkedHashSet&lt;&gt;();
+
+<span class="fc" id="L91">	protected DailyLog() {</span>
+<span class="fc" id="L92">	}</span>
+
+<span class="fc" id="L94">	public DailyLog(Site site, LocalDate logDate) {</span>
+<span class="fc" id="L95">		this.site = site;</span>
+<span class="fc" id="L96">		this.logDate = logDate;</span>
+<span class="fc" id="L97">	}</span>
+
+	/** Adds a work entry and sets its back-reference (keeps both sides of the relation in sync). */
+	public void addWorkEntry(WorkEntry workEntry) {
+<span class="fc" id="L101">		workEntries.add(workEntry);</span>
+<span class="fc" id="L102">		workEntry.setDailyLog(this);</span>
+<span class="fc" id="L103">	}</span>
+
+	/** Removes a work entry; {@code orphanRemoval} deletes it and its assignments on flush. */
+	public void removeWorkEntry(WorkEntry workEntry) {
+<span class="fc" id="L107">		workEntries.remove(workEntry);</span>
+<span class="fc" id="L108">		workEntry.setDailyLog(null);</span>
+<span class="fc" id="L109">	}</span>
+
+	public Site getSite() {
+<span class="fc" id="L112">		return site;</span>
+	}
+
+	public LocalDate getLogDate() {
+<span class="fc" id="L116">		return logDate;</span>
+	}
+
+	public void setLogDate(LocalDate logDate) {
+<span class="fc" id="L120">		this.logDate = logDate;</span>
+<span class="fc" id="L121">	}</span>
+
+	public LogStatus getStatus() {
+<span class="fc" id="L124">		return status;</span>
+	}
+
+	public void setStatus(LogStatus status) {
+<span class="fc" id="L128">		this.status = status;</span>
+<span class="fc" id="L129">	}</span>
+
+	public int getRevision() {
+<span class="fc" id="L132">		return revision;</span>
+	}
+
+	public void setRevision(int revision) {
+<span class="nc" id="L136">		this.revision = revision;</span>
+<span class="nc" id="L137">	}</span>
+
+	public Weather getWeather() {
+<span class="fc" id="L140">		return weather;</span>
+	}
+
+	public void setWeather(Weather weather) {
+<span class="fc" id="L144">		this.weather = weather;</span>
+<span class="fc" id="L145">	}</span>
+
+	public String getNotes() {
+<span class="fc" id="L148">		return notes;</span>
+	}
+
+	public void setNotes(String notes) {
+<span class="fc" id="L152">		this.notes = notes;</span>
+<span class="fc" id="L153">	}</span>
+
+	public AppUser getSignedOffBy() {
+<span class="fc" id="L156">		return signedOffBy;</span>
+	}
+
+	public void setSignedOffBy(AppUser signedOffBy) {
+<span class="fc" id="L160">		this.signedOffBy = signedOffBy;</span>
+<span class="fc" id="L161">	}</span>
+
+	public Instant getSignedOffAt() {
+<span class="fc" id="L164">		return signedOffAt;</span>
+	}
+
+	public void setSignedOffAt(Instant signedOffAt) {
+<span class="fc" id="L168">		this.signedOffAt = signedOffAt;</span>
+<span class="fc" id="L169">	}</span>
+
+	public Long getVersion() {
+<span class="fc" id="L172">		return version;</span>
+	}
+
+	/** Read-only view; use {@link #addWorkEntry} / {@link #removeWorkEntry} to change it. */
+	public Set&lt;WorkEntry&gt; getWorkEntries() {
+<span class="fc" id="L177">		return Collections.unmodifiableSet(workEntries);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

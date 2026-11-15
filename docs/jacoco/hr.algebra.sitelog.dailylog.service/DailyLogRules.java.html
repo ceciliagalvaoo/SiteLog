@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogRules.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">DailyLogRules.java</span></div><h1>DailyLogRules.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import java.util.Objects;
+
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
+import hr.algebra.sitelog.common.exception.LogLockedException;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+
+/** Checks every write to the DailyLog aggregate runs first (root or child). */
+final class DailyLogRules {
+
+	private DailyLogRules() {
+	}
+
+	/**
+	 * Optimistic lock across requests: the form carries the version the user saw. If the log
+	 * changed since (another save, a sign-off), the write is refused with the same exception
+	 * Hibernate throws for a concurrent commit, so both cases end as 409 / &quot;changed by someone
+	 * else&quot;. Within the transaction, {@code @Version} (plus OPTIMISTIC_FORCE_INCREMENT for
+	 * children) catches the remaining race between this check and the commit.
+	 */
+	static void requireVersion(DailyLog log, Long expectedVersion) {
+<span class="fc bfc" id="L24" title="All 2 branches covered.">		if (!Objects.equals(log.getVersion(), expectedVersion)) {</span>
+<span class="fc" id="L25">			throw new ObjectOptimisticLockingFailureException(DailyLog.class, log.getId());</span>
+		}
+<span class="fc" id="L27">	}</span>
+
+	/** AR1 part 1: a signed-off log and its children are read-only (the V3 trigger is the second layer). */
+	static void requireEditable(DailyLog log) {
+<span class="fc bfc" id="L31" title="All 2 branches covered.">		if (!log.getStatus().isEditable()) {</span>
+<span class="fc" id="L32">			throw new LogLockedException(log.getId());</span>
+		}
+<span class="fc" id="L34">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

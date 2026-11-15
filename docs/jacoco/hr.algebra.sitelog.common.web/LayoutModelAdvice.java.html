@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LayoutModelAdvice.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.common.web</a> &gt; <span class="el_source">LayoutModelAdvice.java</span></div><h1>LayoutModelAdvice.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.common.web;
+
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ModelAttribute;
+
+import hr.algebra.sitelog.incident.service.IncidentStatsService;
+import hr.algebra.sitelog.notification.service.NotificationService;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * Model attributes the layout of every screen needs:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@code currentUser} - user menu (fullName, initials, role);&lt;/li&gt;
+ * &lt;li&gt;{@code unreadCount} - badge of the notification bell;&lt;/li&gt;
+ * &lt;li&gt;{@code notifications} - the newest 10 unread notifications for the bell dropdown;&lt;/li&gt;
+ * &lt;li&gt;{@code openIncidentCount} - badge of the &quot;Incidents&quot; sidebar link.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * {@code contextTitle} (top bar) is page-specific and set by each controller.
+ * Runs before every {@code @Controller} handler (a form re-rendered after a failed POST needs the
+ * layout too). Cost: three small indexed queries on {@code notification (recipient_id, read_at)} and the
+ * user lookup.
+ *
+ * &lt;p&gt;Limited to the application's own controllers: Spring Boot's {@code BasicErrorController}
+ * (the 403 / 404 / 500 pages) must render even when the database is the reason for the error, so
+ * the error pages never query it (the layout treats every attribute as optional).
+ */
+@ControllerAdvice(basePackages = &quot;hr.algebra.sitelog&quot;)
+public class LayoutModelAdvice {
+
+	private final CurrentUserProvider currentUserProvider;
+
+	private final NotificationService notificationService;
+
+	private final IncidentStatsService incidentStats;
+
+	public LayoutModelAdvice(CurrentUserProvider currentUserProvider, NotificationService notificationService,
+<span class="fc" id="L38">			IncidentStatsService incidentStats) {</span>
+<span class="fc" id="L39">		this.currentUserProvider = currentUserProvider;</span>
+<span class="fc" id="L40">		this.notificationService = notificationService;</span>
+<span class="fc" id="L41">		this.incidentStats = incidentStats;</span>
+<span class="fc" id="L42">	}</span>
+
+	@ModelAttribute
+	public void layout(Model model) {
+<span class="fc" id="L46">		model.addAttribute(&quot;currentUser&quot;, currentUserProvider.currentUser());</span>
+<span class="fc" id="L47">		model.addAttribute(&quot;unreadCount&quot;, notificationService.unreadCount());</span>
+<span class="fc" id="L48">		model.addAttribute(&quot;notifications&quot;, notificationService.latestUnread());</span>
+<span class="fc" id="L49">		model.addAttribute(&quot;openIncidentCount&quot;, incidentStats.openIncidentCount());</span>
+<span class="fc" id="L50">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

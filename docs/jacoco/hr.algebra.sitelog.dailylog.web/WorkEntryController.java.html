@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntryController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.web</a> &gt; <span class="el_source">WorkEntryController.java</span></div><h1>WorkEntryController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.web;
+
+import java.util.List;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.crew.service.CrewService;
+import hr.algebra.sitelog.dailylog.service.DailyLogHeader;
+import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.WorkEntryService;
+
+/**
+ * One work entry of a log (with its crew rows): add, edit, delete outside the full log form.
+ * {@code logVersion} is the log version shown on the page; it travels as a hidden field and is
+ * kept on re-render, so a conflict is still detected after a validation error.
+ */
+@Controller
+@RequestMapping(&quot;/daily-logs/{logId}/work-entries&quot;)
+public class WorkEntryController {
+
+	static final String FORM_VIEW = &quot;workentry/form&quot;;
+
+	static final String FORM = &quot;workEntryForm&quot;;
+
+	private final WorkEntryService workEntryService;
+
+	private final DailyLogService dailyLogService;
+
+	private final CrewService crewService;
+
+	public WorkEntryController(WorkEntryService workEntryService, DailyLogService dailyLogService,
+<span class="fc" id="L44">			CrewService crewService) {</span>
+<span class="fc" id="L45">		this.workEntryService = workEntryService;</span>
+<span class="fc" id="L46">		this.dailyLogService = dailyLogService;</span>
+<span class="fc" id="L47">		this.crewService = crewService;</span>
+<span class="fc" id="L48">	}</span>
+
+	@GetMapping(&quot;/new&quot;)
+	public String newForm(@PathVariable Long logId, Model model) {
+<span class="fc" id="L52">		DailyLogHeader log = dailyLogService.getHeaderForChange(logId);</span>
+<span class="fc" id="L53">		model.addAttribute(FORM, WorkEntryForm.blank());</span>
+<span class="fc" id="L54">		return form(model, log, log.version(), null);</span>
+	}
+
+	@PostMapping
+	public String create(@PathVariable Long logId, @RequestParam Long logVersion,
+			@Validated @ModelAttribute(FORM) WorkEntryForm form, BindingResult result,
+			@RequestParam(name = &quot;action&quot;, required = false) String action, Model model, RedirectAttributes redirect) {
+<span class="fc" id="L61">		form.compact();</span>
+<span class="fc" id="L62">		DailyLogHeader log = dailyLogService.getHeaderForChange(logId);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">		if (!RowActions.isSave(action)) {</span>
+<span class="fc" id="L64">			return rowAction(form, action, model, log, logVersion, null);</span>
+		}
+<span class="fc bfc" id="L66" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L68">				workEntryService.create(logId, logVersion, form.toCommand());</span>
+<span class="fc" id="L69">				Flash.success(redirect, &quot;workEntry.flash.created&quot;);</span>
+<span class="fc" id="L70">				return &quot;redirect:/daily-logs/&quot; + logId;</span>
+			}
+<span class="nc" id="L72">			catch (InvalidFieldException e) {</span>
+<span class="nc" id="L73">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L76">		return form(model, log, logVersion, null);</span>
+	}
+
+	@GetMapping(&quot;/{id}/edit&quot;)
+	public String editForm(@PathVariable Long logId, @PathVariable Long id, Model model) {
+<span class="fc" id="L81">		DailyLogHeader log = dailyLogService.getHeaderForChange(logId);</span>
+<span class="fc" id="L82">		model.addAttribute(FORM, WorkEntryForm.from(workEntryService.get(logId, id)));</span>
+<span class="fc" id="L83">		return form(model, log, log.version(), id);</span>
+	}
+
+	@PostMapping(&quot;/{id}&quot;)
+	public String update(@PathVariable Long logId, @PathVariable Long id, @RequestParam Long logVersion,
+			@Validated @ModelAttribute(FORM) WorkEntryForm form, BindingResult result,
+			@RequestParam(name = &quot;action&quot;, required = false) String action, Model model, RedirectAttributes redirect) {
+<span class="fc" id="L90">		form.compact();</span>
+<span class="fc" id="L91">		DailyLogHeader log = dailyLogService.getHeaderForChange(logId);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">		if (!RowActions.isSave(action)) {</span>
+<span class="nc" id="L93">			return rowAction(form, action, model, log, logVersion, id);</span>
+		}
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="nc" id="L97">				workEntryService.update(logId, id, logVersion, form.toCommand());</span>
+<span class="nc" id="L98">				Flash.success(redirect, &quot;workEntry.flash.updated&quot;);</span>
+<span class="nc" id="L99">				return &quot;redirect:/daily-logs/&quot; + logId;</span>
+			}
+<span class="nc" id="L101">			catch (InvalidFieldException e) {</span>
+<span class="nc" id="L102">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="nc" id="L105">		return form(model, log, logVersion, id);</span>
+	}
+
+	@PostMapping(&quot;/{id}/delete&quot;)
+	public String delete(@PathVariable Long logId, @PathVariable Long id, @RequestParam Long logVersion,
+			RedirectAttributes redirect) {
+<span class="fc" id="L111">		workEntryService.delete(logId, id, logVersion);</span>
+<span class="fc" id="L112">		Flash.success(redirect, &quot;workEntry.flash.deleted&quot;);</span>
+<span class="fc" id="L113">		return &quot;redirect:/daily-logs/&quot; + logId;</span>
+	}
+
+	private String rowAction(WorkEntryForm form, String action, Model model, DailyLogHeader log, Long logVersion,
+			Long entryId) {
+<span class="fc" id="L118">		form.applyRowAction(action);</span>
+<span class="fc" id="L119">		model.asMap().remove(BindingResult.MODEL_KEY_PREFIX + FORM);</span>
+<span class="fc" id="L120">		model.addAttribute(FORM, form);</span>
+<span class="fc" id="L121">		return form(model, log, logVersion, entryId);</span>
+	}
+
+	private String form(Model model, DailyLogHeader log, Long logVersion, Long entryId) {
+<span class="fc" id="L125">		WorkEntryForm form = (WorkEntryForm) model.getAttribute(FORM);</span>
+<span class="fc" id="L126">		model.addAttribute(&quot;log&quot;, log);</span>
+<span class="fc" id="L127">		model.addAttribute(&quot;logVersion&quot;, logVersion);</span>
+<span class="fc" id="L128">		model.addAttribute(&quot;entryId&quot;, entryId);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">		model.addAttribute(&quot;formAction&quot;, &quot;/daily-logs/&quot; + log.id() + &quot;/work-entries&quot; + (entryId == null ? &quot;&quot; : &quot;/&quot; + entryId));</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">		model.addAttribute(&quot;crews&quot;, crewService.optionsIncluding(form == null ? List.of() : form.selectedCrewIds()));</span>
+<span class="fc" id="L131">		model.addAttribute(&quot;contextTitle&quot;, log.siteName());</span>
+<span class="fc" id="L132">		return FORM_VIEW;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

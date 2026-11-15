@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.notification.service</a> &gt; <span class="el_source">NotificationService.java</span></div><h1>NotificationService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.notification.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.notification.domain.Notification;
+import hr.algebra.sitelog.notification.repository.NotificationRepository;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * In-app notifications of the current user (bell in the top bar). Every query filters by the
+ * current user, so nobody can read or mark someone else's notification. Creating notifications
+ * (scheduled jobs, reopen requests, high-severity incidents) comes with those features (M3/M4).
+ */
+@Service
+@Transactional(readOnly = true)
+public class NotificationService {
+
+	/** How many unread notifications the bell dropdown lists. */
+	public static final int BELL_SIZE = 10;
+
+	private final NotificationRepository notifications;
+
+	private final CurrentUserProvider currentUser;
+
+	private final Clock clock;
+
+<span class="fc" id="L35">	public NotificationService(NotificationRepository notifications, CurrentUserProvider currentUser, Clock clock) {</span>
+<span class="fc" id="L36">		this.notifications = notifications;</span>
+<span class="fc" id="L37">		this.currentUser = currentUser;</span>
+<span class="fc" id="L38">		this.clock = clock;</span>
+<span class="fc" id="L39">	}</span>
+
+	public long unreadCount() {
+<span class="fc" id="L42">		return notifications.countByRecipient_IdAndReadAtIsNull(currentUser.currentUserId());</span>
+	}
+
+	/** Newest {@value #BELL_SIZE} unread notifications. */
+	public List&lt;NotificationView&gt; latestUnread() {
+<span class="fc" id="L47">		return notifications.findTop10ByRecipient_IdAndReadAtIsNullOrderByCreatedAtDesc(currentUser.currentUserId())</span>
+<span class="fc" id="L48">			.stream().map(this::toView).toList();</span>
+	}
+
+	public Page&lt;NotificationView&gt; list(Pageable pageable) {
+<span class="fc" id="L52">		return notifications.findByRecipient_IdOrderByCreatedAtDesc(currentUser.currentUserId(), pageable)</span>
+<span class="fc" id="L53">			.map(this::toView);</span>
+	}
+
+	/** Marks one of the user's notifications as read; returns its link (where to go next), may be null. */
+	@Transactional
+	public String markRead(Long id) {
+<span class="fc" id="L59">		Notification notification = notifications.findByIdAndRecipient_Id(id, currentUser.currentUserId())</span>
+<span class="fc" id="L60">			.orElseThrow(() -&gt; new NotFoundException(Notification.class, id));</span>
+<span class="fc" id="L61">		notification.markRead(Instant.now(clock));</span>
+<span class="fc" id="L62">		return notification.getLink();</span>
+	}
+
+	/** Marks all unread notifications of the user as read in one UPDATE; returns how many. */
+	@Transactional
+	public int markAllRead() {
+<span class="fc" id="L68">		return notifications.markAllRead(currentUser.currentUserId(), Instant.now(clock));</span>
+	}
+
+	private NotificationView toView(Notification n) {
+<span class="fc" id="L72">		return new NotificationView(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getLink(),</span>
+<span class="fc" id="L73">				n.getCreatedAt().atZone(clock.getZone()), n.isRead());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
