@@ -172,3 +172,59 @@ My prompts specified the expected behaviour and implementation constraints befor
 - **Business rules.** I completed the review of site status, daily log dates, sign-off requirements, and the treatment of inactive crews.
 - **Fragments and CSS.** I checked the fragments against the Figma components and reviewed the design tokens in `app.css`.
 - **Croatian translations.** I reviewed `messages_hr.properties` for consistency with the construction vocabulary, including *gradilište*, *dnevnik*, *ekipa*, and *unos rada*.
+
+## Week 8 — M2: aggregate screens, error pages, tests, and documentation
+
+### My decisions and work
+
+This week, I completed the M2 screens for the daily log aggregate, tested the service and web layers, and aligned the documentation with the code. I set the requirements, made the implementation decisions, and verified the result against the Figma prototype and the checkpoint requirements.
+
+- **Figma links.** I linked the *Components* and *Screens* pages directly from the README so the evaluator can open either page without searching the Figma file.
+- **Prototype as visual reference.** I used the hi-fi prototype as the visual reference for each screen. I compared the finished templates with their Figma frames and documented each deviation and its reason in the README’s Figma frame → template table.
+- **Screens.** I defined the behaviour of the sites list with its *Active / Finished* filter, the nested daily log form, the detail page with its lock notice, the delete and sign-off confirmation modals, and the crew and notification pages. I chose server-side submissions to add and remove form rows without JavaScript. I also specified what the error pages could display and verified that they exposed no internal details.
+- **Tests and documentation.** I defined the business rules and expected outcomes for the tests, including PRG, validation, conflict and not-found handling, and rendering in English and Croatian. I checked the architecture, database schema, and domain model documentation against the migrations and the current code.
+
+### Where AI assisted
+
+I used Claude Code for repetitive drafting where I could provide a clear pattern and check the output against the project. I supplied the Figma references, expected behaviour, and validation criteria, then reviewed and tested the drafts before incorporating them.
+
+- **Thymeleaf screens.** I used AI to draft repeated markup for forms, confirmation modals, and error pages based on the components and behaviours I specified.
+- **Localisation.** AI helped draft 208 new message keys in English and Croatian using the project’s existing message bundle format. I checked the messages in the rendered screens.
+- **README table.** AI helped draft the frame-to-template table. I checked each entry against the Figma frame and the implemented template and verified the reason for each deviation.
+- **Tests.** AI helped draft repeated test setup and cases from the scenarios I defined. I reviewed the assertions for the bilingual rendering tests, service unit tests, and `@WebMvcTest` controller tests, then ran the suite.
+- **Documentation.** AI helped with wording and formatting updates across the domain model, architecture overview, database schema, ADR-0003, and README. I verified the technical details against the code and migrations.
+
+### What I reviewed and corrected
+
+- **Enter key in the daily log form.** Pressing Enter activated the first submit button, which removed a row. I added a visually hidden *Save* submit button at the top of the form and verified that Enter saves the log.
+- **Error pages and the database.** The advice that supplied layout data queried the database even on error pages, which prevented the 500 page from rendering during a database outage. I restricted the advice to the application’s package so Spring Boot’s error controller could render without querying the database.
+- **Site status filter.** The draft applied the *Active / Finished* filter in the controller after fetching a page. This could produce incorrect counts and partly empty pages. I moved the filter into the repository query so it applies before pagination.
+- **Stale compiled classes.** I traced misleading failures to invalid `.class` files written by the IDE into `target/`. I ran `./mvnw clean verify` and documented the command in the README.
+- **Decimal hours.** The hours field rejected values such as `7.5`. I set `step="any"` on the number input and checked that server-side range validation still applied.
+- **Flash message overload.** A call to `Flash.success` with a site name as its single `String` argument selected the overload that expected a `detailKey`. The page then displayed `??name??`. I renamed that overload to `successWithDetail` and added a regression test in `FlashTests` to verify that the site name is stored as a message argument.
+
+### What I verified
+
+- I ran the full test suite against PostgreSQL 17 using Testcontainers. The 147 service unit tests contributed to **99.8% service-layer line coverage** and **90.9% overall line coverage**. Maven generates the JaCoCo report, which is committed in `docs/jacoco/`.
+- I checked the results of all 20 rendering tests for the English and Croatian screens.
+- I ran the application with demo data and navigated every screen at **1440 px** and **390 px**. None required horizontal scrolling.
+- I verified that the documentation site built successfully with broken links configured to fail the build.
+
+### Representative prompts (summarised)
+
+I gave Claude Code specific drafting tasks with requirements I could verify in the resulting markup or tests.
+
+1. **Aggregate screens.** Draft the repeated form, detail, and confirmation markup using the specified Figma components. Use submit buttons for adding and removing rows without JavaScript. Flag deviations for the README table.
+2. **Error pages.** Draft the 403, 404, 409, and 500 templates using the empty-state and button components. Use translated messages and omit stack traces and exception details. The pages must render when the database is unavailable.
+3. **Rendering test.** Draft a test that renders each screen in English and Croatian and fails if a translation key is missing or a template fails to render.
+4. **Service tests.** Draft unit test cases for the rules I confirmed for finished sites, future log dates, sign-off with at least one work entry, inactive crews, and deletion. Target at least 80% service-layer line coverage.
+5. **Controller tests.** Draft `@WebMvcTest` cases for PRG redirects with flash messages, forms re-rendered with field errors, and HTTP 409 and 404 responses.
+
+### Review outcome
+
+- **Screens.** I compared each template with its Figma frame and confirmed that every deviation has a reason in the README.
+- **Keyboard and input behaviour.** I confirmed that Enter saves the daily log and that decimal hours are accepted and validated.
+- **Error handling.** I confirmed that error pages render without database queries and show no internal details.
+- **Flash messages.** I confirmed that success messages display the site name correctly and that the regression test covers the single-`String` case.
+- **Tests.** I checked that the service tests exercise the confirmed business rules and that the controller tests cover PRG, validation, conflicts, and not-found responses.
+- **Documentation.** I checked that the architecture, database schema, and domain model pages match migrations V1–V6 and the current packages.
