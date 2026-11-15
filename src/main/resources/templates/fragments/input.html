@@ -11,7 +11,8 @@
 
   field       - property path as a string, also nested: 'date', 'workEntries[0].description'
   label       - resolved text (#{...})
-  type        - text | email | number | date | time | password
+  type        - text | email | number | date | time | password | search
+                (number gets step="any": hours such as 7.5 are valid; the server checks the range)
   placeholder - resolved text or null
   required    - true adds the "*" marker and the HTML required attribute
 
@@ -36,7 +37,7 @@
 		<span th:text="${label}">Incident title</span><span class="field__req" th:if="${required}" aria-hidden="true">*</span>
 	</label>
 	<input class="control" th:type="${type}" th:field="*{__${field}__}"
-	       th:placeholder="${placeholder}" th:required="${required}"
+	       th:placeholder="${placeholder}" th:required="${required}" th:step="${type == 'number'} ? 'any'"
 	       th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? ${fid + '-error'}">
 	<p class="field__error" th:if="${hasError}" th:id="${fid + '-error'}" th:errors="*{__${field}__}">Title is required</p>
 </div>

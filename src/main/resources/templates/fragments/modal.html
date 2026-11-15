@@ -42,5 +42,27 @@
 	</div>
 	<th:block th:replace="${body}"></th:block>
 </dialog>
+<!--/*
+  confirm(id, eyebrow, title, subtitle, body) - the same dialog for a destructive or final step
+  (delete a site / crew / draft log, sign off a log): warning icon instead of "+".
+  No frame of its own in the prototype; built from the Modal component.
+*/-->
+<dialog th:fragment="confirm(id, eyebrow, title, subtitle, body)" class="modal modal--confirm"
+        th:id="${id}" th:aria-labelledby="${id + '-title'}">
+	<div class="modal__head">
+		<span class="modal__icon" aria-hidden="true">
+			<svg th:replace="~{fragments/icon :: icon('alert')}"></svg>
+		</span>
+		<button type="button" class="modal__close" data-modal-close th:aria-label="#{modal.close}">
+			<svg th:replace="~{fragments/icon :: icon('close')}"></svg>
+		</button>
+	</div>
+	<div class="modal__titles">
+		<p class="eyebrow" th:if="${eyebrow != null}" th:text="${eyebrow}">ZG-01</p>
+		<h2 th:id="${id + '-title'}" th:text="${title}">Delete this site?</h2>
+		<p class="text-muted" th:if="${subtitle != null}" th:text="${subtitle}">The site is removed permanently.</p>
+	</div>
+	<th:block th:replace="${body}"></th:block>
+</dialog>
 </body>
 </html>

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--/*
+  Pager for a Spring Data Page (no Figma frame: the prototype lists fit on one page).
+  pager(page, baseUrl)
+    page    - org.springframework.data.domain.Page
+    baseUrl - resolved URL that keeps the current filters, e.g. @{/sites(q=${q})};
+              the page number is appended as ?page= / &page= (0-based, as Spring Data expects);
+              plain concatenation, so the context path is not added twice
+  Rendered only when there is more than one page.
+*/-->
+<nav th:fragment="pager(page, baseUrl)" class="pager" th:if="${page.totalPages > 1}"
+     th:aria-label="#{pagination.label}"
+     th:with="sep=${#strings.contains(baseUrl, '?') ? '&' : '?'}">
+	<a class="btn btn--secondary" th:if="${page.hasPrevious()}"
+	   th:href="${baseUrl + sep + 'page=' + (page.number - 1)}" th:text="#{common.previous}">Previous</a>
+	<span class="pager__summary" th:text="#{pagination.summary(${page.number + 1}, ${page.totalPages})}">Page 1 of 3</span>
+	<a class="btn btn--secondary" th:if="${page.hasNext()}"
+	   th:href="${baseUrl + sep + 'page=' + (page.number + 1)}" th:text="#{common.next}">Next</a>
+</nav>
+</body>
+</html>

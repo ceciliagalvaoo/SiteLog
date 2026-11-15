@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<!--/*
+  Site detail (Figma p. 29 overview, p. 31 daily logs, p. 31b daily logs empty, p. 32 incidents,
+  p. 33 compliance; p. 4 is the overview with the "Daily log saved" flash). One template, one tab
+  per request (?tab=overview|logs|incidents|compliance): every tab is a real link, no JS.
+  Model: site (SiteDetails with the KPIs), tab, logs (Page<DailyLogSummary>), contextTitle.
+  Delete: confirmation modal (no frame - built from the Modal component); when the site holds
+  records the modal explains why it cannot be deleted instead of offering the button.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="${site.name} + ' · ' + #{app.name}">Residential Complex Lanište · SiteLog</title></head>
+<body>
+<div id="content" class="stack"
+     th:with="dateFmt=#{format.date}, hasRecords=${site.dailyLogCount > 0 or site.openIncidentCount > 0}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites}" href="/sites" th:text="#{nav.sites}">Sites</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${site.name}">Residential Complex Lanište</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="${site.finished} ? #{site.detail.eyebrow.finished(${site.code})} : #{site.detail.eyebrow.active(${site.code})}">ZG-01 · Active project</p>
+			<h1 th:text="${site.name}">Residential Complex Lanište</h1>
+			<p class="lead" th:text="${tab == 'logs'} ? #{site.detail.logs.lead} : ${site.address}">Lanište 12, 10000 Zagreb</p>
+		</div>
+		<div class="page-header__actions">
+			<button type="button" class="btn btn--ghost" data-modal-open="delete-site" th:text="#{site.detail.delete}">Delete site</button>
+			<a class="btn btn--secondary" th:href="@{/sites/{id}/edit(id=${site.id})}" th:text="#{site.detail.settings}">Site settings</a>
+			<a class="btn btn--primary" th:href="@{/sites/{id}/daily-logs/new(id=${site.id})}">
+				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+				<span th:text="#{dailyLog.new}">New daily log</span>
+			</a>
+		</div>
+	</div>
+
+	<nav class="tabs" th:aria-label="#{site.detail.tabs}">
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id})}" th:aria-current="${tab == 'overview'} ? 'page'"
+		   th:text="#{site.tab.overview}">Overview</a>
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='logs')}" th:aria-current="${tab == 'logs'} ? 'page'">
+			<span th:text="#{site.tab.logs}">Daily logs</span>
+			<span class="tabs__count" th:text="${site.dailyLogCount}">4</span>
+		</a>
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='incidents')}" th:aria-current="${tab == 'incidents'} ? 'page'">
+			<span th:text="#{site.tab.incidents}">Incidents</span>
+			<span class="tabs__count" th:text="${site.openIncidentCount}">1</span>
+		</a>
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='compliance')}" th:aria-current="${tab == 'compliance'} ? 'page'"
+		   th:text="#{site.tab.compliance}">Compliance</a>
+	</nav>
+
+	<!-- ============================================================ overview -->
+	<th:block th:if="${tab == 'overview'}">
+		<div class="kpi-grid">
+			<section class="kpi kpi--teal">
+				<h2 class="kpi__label" th:text="#{site.kpi.logs}">Daily logs</h2>
+				<p class="kpi__value" th:text="${#numbers.formatInteger(site.dailyLogCount, 1, 'DEFAULT')}">4</p>
+				<p class="kpi__caption" th:text="${site.lastLogDate != null} ? #{site.kpi.logs.last(${#temporals.format(site.lastLogDate, dateFmt)})} : #{site.kpi.logs.none}">Last log 29 Oct 2026</p>
+			</section>
+			<section class="kpi kpi--amber">
+				<h2 class="kpi__label" th:text="#{site.kpi.awaiting}">Awaiting sign-off</h2>
+				<p class="kpi__value" th:text="${#numbers.formatInteger(site.logsAwaitingSignOff, 1, 'DEFAULT')}">2</p>
+				<p class="kpi__caption" th:text="#{site.kpi.awaiting.caption}">Draft or reopened logs</p>
+			</section>
+			<section class="kpi kpi--orange">
+				<h2 class="kpi__label" th:text="#{site.kpi.incidents}">Open incidents</h2>
+				<p class="kpi__value" th:text="${#numbers.formatInteger(site.openIncidentCount, 1, 'DEFAULT')}">1</p>
+				<p class="kpi__caption" th:text="#{site.kpi.incidents.caption}">Reported or under review</p>
+			</section>
+			<section class="kpi kpi--red">
+				<h2 class="kpi__label" th:text="#{site.kpi.actions}">Corrective actions</h2>
+				<p class="kpi__value" th:text="${#numbers.formatInteger(site.openCorrectiveActionCount, 1, 'DEFAULT')}">3</p>
+				<p class="kpi__caption" th:text="#{site.kpi.actions.caption}">Open or overdue</p>
+			</section>
+		</div>
+
+		<section class="card">
+			<div class="card__header card__header--row">
+				<div>
+					<h2 th:text="#{site.recent.title}">Recent daily logs</h2>
+					<p class="card__subtitle" th:text="#{site.recent.subtitle}">Latest shift activity submitted by the site team.</p>
+				</div>
+				<a class="btn btn--ghost" th:if="${!logs.empty}" th:href="@{/sites/{id}(id=${site.id}, tab='logs')}"
+				   th:text="#{site.recent.viewAll}">View all logs</a>
+			</div>
+			<th:block th:if="${logs.empty}">
+				<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, #{dailyLog.new}, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
+			</th:block>
+			<div class="table-wrap table-wrap--flush" th:unless="${logs.empty}">
+				<table th:replace="~{site/detail :: logTable(${#lists.size(logs.content) > 5 ? logs.content.subList(0, 5) : logs.content})}"></table>
+			</div>
+		</section>
+
+		<section class="card">
+			<h2 th:text="#{site.info.title}">Site details</h2>
+			<dl class="facts">
+				<div><dt th:text="#{site.field.code}">Site code</dt><dd th:text="${site.code}">ZG-01</dd></div>
+				<div><dt th:text="#{site.field.manager}">Site Manager</dt><dd th:text="${site.managerName}">Marko Kovačević</dd></div>
+				<div><dt th:text="#{site.field.startDate}">Start date</dt><dd th:text="${#temporals.format(site.startDate, dateFmt)}">2 Mar 2026</dd></div>
+				<div><dt th:text="#{site.card.endDate}">End date</dt>
+					<dd th:text="${site.endDate != null} ? ${#temporals.format(site.endDate, dateFmt)} : #{common.notSet}">Not set</dd></div>
+			</dl>
+			<div th:if="${site.description != null}">
+				<h3 class="facts__label" th:text="#{site.info.description}">Description</h3>
+				<p th:text="${site.description}">Two six-storey residential buildings.</p>
+			</div>
+		</section>
+	</th:block>
+
+	<!-- ============================================================ daily logs -->
+	<th:block th:if="${tab == 'logs'}">
+		<div class="card" th:if="${logs.empty}">
+			<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, #{dailyLog.new}, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
+		</div>
+		<div class="table-wrap" th:unless="${logs.empty}">
+			<table th:replace="~{site/detail :: logTable(${logs.content})}"></table>
+		</div>
+		<nav th:replace="~{fragments/pagination :: pager(${logs}, @{/sites/{id}(id=${site.id}, tab='logs')})}"></nav>
+	</th:block>
+
+	<!-- ============================================================ incidents / compliance (screens of M3) -->
+	<div class="card" th:if="${tab == 'incidents'}">
+		<div th:replace="~{fragments/table-row :: emptyState(#{site.incidents.title(${site.openIncidentCount})}, #{site.incidents.body}, null, null)}"></div>
+	</div>
+	<div class="card" th:if="${tab == 'compliance'}">
+		<div th:replace="~{fragments/table-row :: emptyState(#{site.compliance.title(${site.openCorrectiveActionCount})}, #{site.compliance.body}, null, null)}"></div>
+	</div>
+
+	<!-- ============================================================ delete confirmation -->
+	<dialog th:replace="~{fragments/modal :: confirm('delete-site', ${site.code},
+	         ${hasRecords} ? #{site.delete.blocked.title} : #{site.delete.title},
+	         ${hasRecords} ? #{site.flash.deleteBlocked} : #{site.delete.subtitle}, ~{site/detail :: #delete-site-body})}">
+		<div id="delete-site-body">
+			<div class="form-actions" th:if="${hasRecords}">
+				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.close}">Close</button>
+				<a class="btn btn--primary" th:href="@{/sites/{id}/edit(id=${site.id})}" th:text="#{site.detail.settings}">Site settings</a>
+			</div>
+			<form class="form-actions" th:unless="${hasRecords}" th:action="@{/sites/{id}/delete(id=${site.id})}" method="post">
+				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+				<button type="submit" class="btn btn--danger" th:text="#{site.delete.confirm}">Delete site</button>
+			</form>
+		</div>
+	</dialog>
+</div>
+
+<!--/* Daily logs table: the full list (logs tab) and the 5 newest (overview). Mobile: stacked cards (p. 13). */-->
+<table th:fragment="logTable(rows)" class="table table--stack table--logs">
+	<caption class="visually-hidden" th:text="#{site.tab.logs}">Daily logs</caption>
+	<thead th:replace="~{fragments/table-row :: header(${ {'dailyLog.field.date', 'dailyLog.field.weather', 'dailyLog.list.workEntries', 'dailyLog.list.crews', 'dailyLog.list.hours', 'common.status'} })}"></thead>
+	<tbody>
+		<tr th:each="log : ${rows}" th:with="day=${#temporals.format(log.logDate, #messages.msg('format.date'))}">
+			<td class="cell--accent log-date" th:attr="data-label=#{dailyLog.field.date}">
+				<span class="log-date__block" aria-hidden="true">
+					<strong th:text="${#temporals.format(log.logDate, #messages.msg('format.date.day'))}">29</strong>
+					<span th:text="${#temporals.format(log.logDate, #messages.msg('format.date.monthYear'))}">Oct 2026</span>
+				</span>
+				<a th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="${day}"
+				   th:attr="aria-label=#{dailyLog.list.open(${day})}">29 Oct 2026</a>
+				<span class="log-date__sub" aria-hidden="true">
+					<th:block th:text="${log.weather != null} ? #{${'weather.' + log.weather}} : #{common.notSet}">Cloudy</th:block>
+					· <th:block th:text="#{dailyLog.list.entrySummary(${log.workEntryCount})}">2 work entries</th:block>
+				</span>
+			</td>
+			<td th:replace="~{fragments/table-row :: cell(#{dailyLog.field.weather}, ${log.weather != null} ? #{${'weather.' + log.weather}} : #{common.notSet}, null)}"></td>
+			<td th:replace="~{fragments/table-row :: cell(#{dailyLog.list.workEntries}, ${#numbers.formatInteger(log.workEntryCount, 1, 'DEFAULT')}, null)}"></td>
+			<td th:replace="~{fragments/table-row :: cell(#{dailyLog.list.crews}, ${#numbers.formatInteger(log.crewCount, 1, 'DEFAULT')}, null)}"></td>
+			<td th:replace="~{fragments/table-row :: cell(#{dailyLog.list.hours}, ${#numbers.formatDecimal(log.totalHours, 1, 'DEFAULT', 1, 'DEFAULT')}, null)}"></td>
+			<td th:replace="~{fragments/table-row :: chipCell(#{common.status}, 'log', ${log.status})}"></td>
+		</tr>
+	</tbody>
+</table>
+</body>
+</html>

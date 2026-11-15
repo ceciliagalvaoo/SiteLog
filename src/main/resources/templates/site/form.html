@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--/*
+  New site (Figma p. 34) and Site settings (p. 30). Same template, siteId == null for "new".
+  Model: siteForm (SiteForm), siteId, managers (List<UserOption>).
+  novalidate: the server's messages (identical to the prototype, in the user's language) are the
+  only validation messages, instead of the browser's own bubbles.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="(${siteId == null} ? #{site.form.new.title} : #{site.detail.settings}) + ' · ' + #{app.name}">New site · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="isNew=${siteId == null}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
+		<a th:href="@{/sites}" href="/sites" th:text="#{nav.sites}">Sites</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<th:block th:unless="${isNew}">
+			<a th:href="@{/sites/{id}(id=${siteId})}" th:text="${siteForm.name}">Residential Complex Lanište</a>
+			<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		</th:block>
+		<span aria-current="page" th:text="${isNew} ? #{site.form.new.title} : #{site.detail.settings}">New site</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{site.form.eyebrow}">Site administration</p>
+			<h1 th:text="${isNew} ? #{site.form.new.title} : #{site.detail.settings}">New site</h1>
+			<p class="lead" th:text="${isNew} ? #{site.form.new.lead} : #{site.form.edit.lead}">Register a construction site and assign its site manager.</p>
+		</div>
+	</div>
+
+	<form class="form" th:object="${siteForm}" novalidate method="post"
+	      th:action="${isNew} ? @{/sites} : @{/sites/{id}(id=${siteId})}">
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', #{site.form.error.title}, #{form.error.body})}"></div>
+		</th:block>
+
+		<section class="card">
+			<div class="card__header">
+				<h2 th:text="#{site.form.card.title}">Site details</h2>
+				<p class="card__subtitle" th:text="#{site.form.card.subtitle}">Code and name appear on daily logs, incidents and the compliance report.</p>
+			</div>
+			<p class="field__error" th:each="err : ${#fields.globalErrors()}" th:text="${err}">Global error</p>
+			<div class="form-grid form-grid--2">
+				<div th:replace="~{fragments/input :: textField('name', #{site.field.name}, 'text', null, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('code', #{site.field.code}, 'text', 'ZG-03', true)}"></div>
+				<div th:replace="~{fragments/input :: textField('address', #{site.field.address}, 'text', null, true)}"></div>
+				<div th:replace="~{fragments/input :: selectField('managerId', #{site.field.manager}, ${managers}, 'id', 'fullName', #{site.field.manager.empty}, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('startDate', #{site.field.startDate}, 'date', null, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('endDate', #{site.field.endDateOptional}, 'date', null, false)}"></div>
+			</div>
+			<div th:replace="~{fragments/input :: textareaField('description', #{site.field.descriptionOptional}, null, false)}"></div>
+		</section>
+
+		<div class="form-actions form-actions--sticky">
+			<a class="btn btn--secondary" th:href="${isNew} ? @{/sites} : @{/sites/{id}(id=${siteId})}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary" th:text="${isNew} ? #{site.form.create} : #{common.saveChanges}">Create site</button>
+		</div>
+	</form>
+</div>
+</body>
+</html>

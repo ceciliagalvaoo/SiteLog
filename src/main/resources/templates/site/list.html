@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<!--/*
+  Sites list (Figma p. 28 "Sites - Sites list", mobile p. 12).
+  Model: sites (Page<SiteListItem>), q (text filter), status (SiteStatusFilter), statuses (all values).
+  The filter is a GET form: the URL keeps the filter, the back button and links work without JS.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="#{site.list.title} + ' · ' + #{app.name}">Sites · SiteLog</title></head>
+<body>
+<div id="content" class="stack">
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{site.list.eyebrow}">Project portfolio</p>
+			<h1 th:text="#{site.list.title}">Sites</h1>
+			<p class="lead" th:text="#{site.list.lead}">Monitor active projects, daily reporting and safety at a glance.</p>
+		</div>
+		<div class="page-header__actions">
+			<a class="btn btn--primary" th:href="@{/sites/new}" href="/sites/new">
+				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+				<span th:text="#{site.list.new}">New site</span>
+			</a>
+		</div>
+	</div>
+
+	<form class="filter-bar" th:action="@{/sites}" action="/sites" method="get" role="search">
+		<div class="field filter-bar__search">
+			<label class="field__label" for="q" th:text="#{site.list.search.label}">Search sites</label>
+			<input class="control" type="search" id="q" name="q" th:value="${q}"
+			       th:placeholder="#{site.list.search.placeholder}">
+		</div>
+		<div class="field">
+			<label class="field__label" for="status" th:text="#{site.list.status.label}">Project status</label>
+			<select class="control" id="status" name="status">
+				<option th:each="s : ${statuses}" th:value="${s}" th:selected="${s == status}"
+				        th:text="#{${'site.status.filter.' + s}}">All sites</option>
+			</select>
+		</div>
+		<button type="submit" class="btn btn--secondary" th:text="#{common.filter}">Filter</button>
+	</form>
+
+	<th:block th:with="filtered=${(q != null and !#strings.isEmpty(#strings.trim(q))) or status.name() != 'ALL'}">
+		<ul class="site-grid" th:unless="${sites.empty}">
+			<li class="site-card" th:each="site : ${sites}">
+				<div class="site-card__banner">
+					<span class="site-card__code" th:text="${site.code}">ZG-01</span>
+					<span th:replace="~{fragments/chip :: status('site', ${site.finished} ? 'FINISHED' : 'ACTIVE')}"></span>
+				</div>
+				<div class="site-card__body">
+					<h2 class="site-card__name">
+						<a th:href="@{/sites/{id}(id=${site.id})}" th:text="${site.name}">Residential Complex Lanište</a>
+					</h2>
+					<p class="text-muted" th:text="${site.address}">Lanište 12, 10000 Zagreb</p>
+				</div>
+				<dl class="site-card__meta">
+					<div>
+						<dt th:text="#{site.card.manager}">Site manager</dt>
+						<dd th:text="${site.managerName}">Marko Kovačević</dd>
+					</div>
+					<div>
+						<dt th:text="#{site.card.started}">Started</dt>
+						<dd th:text="${#temporals.format(site.startDate, #messages.msg('format.date'))}">2 Mar 2026</dd>
+					</div>
+					<div>
+						<dt th:text="#{site.card.endDate}">End date</dt>
+						<dd th:text="${site.endDate != null} ? ${#temporals.format(site.endDate, #messages.msg('format.date'))} : #{common.notSet}">Not set</dd>
+					</div>
+				</dl>
+			</li>
+		</ul>
+
+		<div class="card" th:if="${sites.empty and filtered}">
+			<div th:replace="~{fragments/table-row :: emptyState(#{site.list.noResults.title}, #{site.list.noResults.body}, #{common.clearFilter}, @{/sites})}"></div>
+		</div>
+		<div class="card" th:if="${sites.empty and !filtered}">
+			<div th:replace="~{fragments/table-row :: emptyState(#{site.list.empty.title}, #{site.list.empty.body}, #{site.list.new}, @{/sites/new})}"></div>
+		</div>
+	</th:block>
+
+	<nav th:replace="~{fragments/pagination :: pager(${sites}, @{/sites(q=${q}, status=${status})})}"></nav>
+</div>
+</body>
+</html>
