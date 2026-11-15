@@ -1,27 +1,39 @@
 ---
 title: Domain model
 sidebar_position: 1
-description: Entities, relations, roles and state machines of SiteLog.
+description: Entities, relations, business rules, delete rules, roles and state machines of SiteLog.
 ---
 
 # Domain model
 
-:::info Status
-Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2
-(Flyway `V2`–`V5`); the diagrams below were checked against those migrations on 2026-11-04.
-This page is the logical model; the physical schema (every column, constraint, index and
-trigger) is in [Database schema](./database.md), and the migrations win if the two disagree.
-The reasoning behind the mapping is in [ADR-0001](../adr/0001-persistence-model.md).
+:::info Status (2026-11-15, milestone M2)
+Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2 (Flyway
+`V2`–`V6`) and the JPA entities map them (M2). The diagrams below were checked against the
+migrations and the entity classes on 2026-11-15. This page is the logical model; the physical
+schema (every column, constraint, index and trigger) is in [Database schema](./database.md), and
+the migrations win if the two disagree. The reasoning behind the mapping is in
+[ADR-0001](../adr/0001-persistence-model.md).
+
+Entities in the code (`hr.algebra.sitelog.<feature>.domain`): `Site`, `Crew`, `AppUser`, `Role`,
+`DailyLog`, `WorkEntry`, `CrewAssignment`, `LogReopenRequest`, `Incident`, `CorrectiveAction`,
+`Notification`, plus the Envers revision entity `AuditRevision` (`common.audit`).
+`IncidentDraft` is a table only; its entity arrives with the AI feature (M3).
 :::
 
 ## Aggregates
 
 | Aggregate root | Owns (cascade, orphan removal) | References (no cascade) |
 |---|---|---|
-| `DailyLog` | `WorkEntry` → `CrewAssignment`, `LogReopenRequest` | `Site`, `Crew`, `AppUser` |
+| `DailyLog` | `WorkEntry` → `CrewAssignment` | `Site`, `Crew`, `AppUser` |
+| `LogReopenRequest` | — | `DailyLog`, `AppUser` (requester, decider) |
 | `Incident` | `CorrectiveAction` | `Site`, `Crew` (affected crews), `DailyLog` (optional), `AppUser` |
-| `Site`, `Crew`, `AppUser` | — | `Role` |
-| `IncidentDraft` | — | `Site`, `AppUser`, `Incident` (after acceptance) |
+| `Site`, `Crew`, `AppUser` | — | `Role` (`AppUser`), `AppUser` (`Site.manager`) |
+| `Notification` | — | `AppUser` (recipient) |
+| `IncidentDraft` (table only, entity in M3) | — | `Site`, `AppUser`, `Incident` (after acceptance) |
+
+`LogReopenRequest` is deliberately **not** cascaded from `DailyLog`: requests are history and must
+not disappear with an edit of the log. A log that has a reopen request can therefore not be
+deleted (see [Delete rules](#delete-rules)).
 
 The assignment's chain *Site → DailyLog → WorkEntry → Crew* and *Site → Incident →
 CorrectiveAction* is covered by these aggregates. `Site` is the parent in the UI and in the
@@ -147,6 +159,7 @@ erDiagram
     APP_USER ||--o{ INCIDENT_DRAFT : "writes shift note"
     APP_USER |o--o{ INCIDENT_DRAFT : "reviews"
     INCIDENT_DRAFT |o--o| INCIDENT : "becomes, after sign-off"
+    APP_USER ||--o{ NOTIFICATION : "receives"
 
     ROLE {
         bigint id PK
@@ -186,6 +199,16 @@ erDiagram
         timestamptz created_at "default now()"
         timestamptz reviewed_at "nullable"
     }
+    NOTIFICATION {
+        bigint id PK
+        bigint recipient_id FK "AppUser"
+        varchar type "CORRECTIVE_ACTION_OVERDUE, DAILY_LOG_UNSIGNED, REOPEN_REQUESTED, HIGH_SEVERITY_INCIDENT"
+        varchar title "not blank"
+        varchar body "nullable"
+        varchar link "nullable, relative path only"
+        timestamptz created_at "default now()"
+        timestamptz read_at "null while unread"
+    }
     SITE {
         bigint id PK
     }
@@ -203,6 +226,19 @@ Entities repeated with only `id` are fully described in the first diagram.
 
 - Every association is `FetchType.LAZY`, including `@ManyToOne` (whose JPA default is
   `EAGER`). Screens that need children load them with a fetch join or `@EntityGraph`.
+- Every entity extends `BaseEntity` (`common.domain`): identity key, equality by class and id,
+  constant `hashCode` per class, so an entity stays findable in a `Set` before and after it gets
+  its id.
+- **Child collections are ordered `Set`s, not `List`s.** `DailyLog.workEntries`
+  (`@OrderBy("startTime ASC, id ASC")`), `WorkEntry.assignments` (`@OrderBy("id ASC")`),
+  `Incident.correctiveActions` (`@OrderBy("dueDate ASC, id ASC")`) and `Incident.affectedCrews`
+  (`@OrderBy("name ASC")`). The detail query join-fetches two levels at once; with `List`s
+  ("bags") Hibernate either throws `MultipleBagFetchException` or repeats each work entry once
+  per crew row. With `@OrderBy` Hibernate uses an ordered set, so the screen order is stable.
+- Both sides of a parent–child relation are kept in sync by the parent
+  (`DailyLog.addWorkEntry/removeWorkEntry`, `WorkEntry.addAssignment/removeAssignment`,
+  `Incident.addCorrectiveAction/removeCorrectiveAction`); the getters return read-only views.
+  Removing a child from the collection deletes it on flush (`orphanRemoval = true`).
 - `CrewAssignment` is a full entity with its own `id` and a unique constraint on
   `(work_entry_id, crew_id)`, not a `@ManyToMany`, because it carries attributes.
 - `Incident` ↔ `Crew` is a plain `@ManyToMany` over `incident_affected_crew`.
@@ -218,8 +254,57 @@ Entities repeated with only `id` are fully described in the first diagram.
   `SIGNED_OFF` `daily_log` row the only accepted change is the reopen (`REOPENED`,
   `revision` + 1, content unchanged); `DELETE` fails. Details in
   [Database schema](./database.md#locked-daily-logs).
+- `DailyLog`, `WorkEntry` and `CrewAssignment` are `@Audited` (Envers, mapped in M2). Their
+  references to reference data (`Site`, `Crew`, `AppUser`) are
+  `@Audited(targetAuditMode = NOT_AUDITED)`: the audit row keeps the foreign key value only.
 - An `IncidentDraft` never writes to `incident` by itself; an `Incident` is created only
   when a supervisor accepts the draft (see [Incident draft](#incident-draft-ai-output)).
+
+## Business rules (confirmed 2026-11-08)
+
+Checked by the services before anything is written; a field rule answers on the form field, a
+workflow rule with a flash message.
+
+| Rule | Where it is checked |
+|---|---|
+| A site is **Finished** when `end_date` is set and `end_date <= today`; otherwise it is **Active** (a future end date is only planned). There is no status column. | `SiteService.isFinished`, and the same condition in the `Active` / `Finished` filter query of the sites list (`SiteRepository.searchByStatusWithManager`). |
+| A daily log's date cannot be in the future. | `DailyLogService` (field error on *Date*). |
+| One daily log per site and day. | `DailyLogService`, backed by `uk_daily_log_site_date`. |
+| Sign-off needs **at least one work entry**. | `DailyLogService.signOff` (flash error). |
+| A signed-off log and its children are read-only. | `DailyLogRules.requireEditable`, backed by the V3 triggers. |
+| The form must carry the version the user saw; a different version is a conflict (409). | `DailyLogRules.requireVersion`, plus `@Version` at commit. |
+| An **inactive crew** is not offered and is rejected for a new crew row, but stays on the logs where it was already assigned (and stays selectable on that row when such a log is edited). | `CrewService.optionsIncluding`, `DailyLogAssembler.resolveCrew`. |
+| A site's manager must be an active user with role `SITE_MANAGER`. | `SiteService` (field error on *Site manager*). |
+
+"Today" is taken from one `Clock` bean in the sites' time zone (`sitelog.time-zone:
+Europe/Zagreb`), not the server's (Render runs in UTC).
+
+## Delete rules
+
+Decided on 2026-11-07. Records that other records point to are kept, because logs and incidents are
+evidence. The service checks first and answers with a flash message; the foreign keys (no
+`ON DELETE CASCADE`) stop anything the service missed.
+
+| Entity | Can be deleted when | Otherwise |
+|---|---|---|
+| `Site` | It has no daily logs, no incidents and no AI incident drafts. | Refused; the message asks to set an *End date* instead (the site then shows as Finished). |
+| `DailyLog` | Its status is `DRAFT` and no incident or reopen request points to it. Its work entries and crew rows are deleted with it (cascade from the aggregate root). | Refused with a message. A `SIGNED_OFF` log is also blocked by the lock trigger. |
+| `WorkEntry`, `CrewAssignment` | The parent log is editable (`DRAFT` or `REOPENED`). | Refused (log locked). |
+| `Crew` | It is not used in any crew assignment and is not an affected crew of any incident. | Refused; the message suggests deactivating it (`active = false` removes it from the selection lists). |
+
+## Notifications
+
+`Notification` (V6) is an in-app message for one user, shown under the bell in the top bar
+until it is read (`read_at` set). M2 has the entity, the bell (unread counter and newest 10
+unread), the list page and *mark as read* / *mark all as read* / *open*. Nothing creates
+notifications yet: the producers are the scheduled jobs (overdue corrective action, unsigned
+daily log) and domain events (reopen requested, `HIGH`/`CRITICAL` incident) in M3/M4.
+
+**Decision (2026-11-08): store a message key and arguments, not finished text.** The title will
+come from `notification.type.<TYPE>` and the body will be rendered on screen in the reader's
+language, so the same notification reads correctly in English and Croatian. This is implemented
+when notifications are first created (M3/M4). V6 is not edited: if the arguments need their own
+column, a new migration adds it.
 
 ## Decision — reopen audit trail (AR1)
 
@@ -257,7 +342,9 @@ DAILY_LOG_AUDIT (proposed)
 - Cons: the service must write each row (risk of missing a field); more code and tests; values
   stored as text.
 
-**Decision (2026-10-31): (a) Hibernate Envers**, recorded in ADR-0003 (M2).
+**Decision (2026-10-31): (a) Hibernate Envers**, recorded in ADR-0003. The Envers mapping is in
+place since M2 (`@Audited` on the aggregate, revision entity `AuditRevision` with
+`AuditRevisionListener`); the reopen workflow and the before/after screen come in M3.
 
 - Reopen edits touch the children (`WorkEntry`, `CrewAssignment`), including deletions. Envers
   records inserts, updates and deletes on every `@Audited` entity without per-field service code,
@@ -268,8 +355,8 @@ DAILY_LOG_AUDIT (proposed)
   audit schema is explicit and validated like the rest (`ddl-auto=validate`); `V5` makes them
   append-only ([Database schema](./database.md#audit-tables-envers)).
 - The audit works in three layers: `LOG_REOPEN_REQUEST` (why and who approved), a domain
-  `@Aspect` (which action happened — sign-off, reopen, incident transitions) and Envers (what
-  changed in the data).
+  `@Aspect` (which action happened — sign-off, reopen, incident transitions; M3) and Envers
+  (what changed in the data).
 
 ## Roles and capabilities
 
@@ -281,7 +368,9 @@ DAILY_LOG_AUDIT (proposed)
 | `INSPECTOR` | Read logs and incidents; view the compliance report. | Any write operation. |
 
 Authorization is enforced on service methods (`@PreAuthorize`), and the Thymeleaf security
-dialect hides actions the current user cannot perform.
+dialect hides actions the current user cannot perform. Both arrive in M3 with real login; in M2
+the services act as one configured seed user (`sitelog.current-user.email`,
+`ConfiguredCurrentUserProvider`).
 
 ## State machines
 
@@ -291,7 +380,8 @@ dialect hides actions the current user cannot perform.
 stateDiagram-v2
     [*] --> DRAFT : SITE_MANAGER creates log
     DRAFT --> DRAFT : edit work entries and crews
-    DRAFT --> SIGNED_OFF : SITE_MANAGER signs off
+    DRAFT --> SIGNED_OFF : SITE_MANAGER signs off (at least one work entry)
+    DRAFT --> [*] : delete (no incident or reopen request linked)
     SIGNED_OFF --> REOPENED : SAFETY_SUPERVISOR approves reopen request (reason required, revision + 1)
     REOPENED --> REOPENED : edit (changes audited)
     REOPENED --> SIGNED_OFF : SITE_MANAGER signs off again

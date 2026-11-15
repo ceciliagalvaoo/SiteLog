@@ -19,6 +19,8 @@ top of the prototype is listed in [From prototype to implementation](#from-proto
   [open the prototype](https://www.figma.com/proto/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=20-3626&p=f&scaling=min-zoom&content-scaling=fixed&page-id=9%3A3&starting-point-node-id=20%3A3626)
 - **Figma file:** [SiteLog](https://www.figma.com/design/OdFchbgQXPWVLw115Wc3iz/SiteLog) — one file,
   three pages: `Wireframes` (low-fi, M1), `Components`, `Screens`
+- **Component set (Figma):** [Components page](https://www.figma.com/design/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=9-2) ·
+  **Screens (Figma):** [Screens page](https://www.figma.com/design/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=9-3)
 - **Export:** [`docs/prototype.pdf`](./prototype.pdf) — 46 pages, one screen per page in
   the order of the [screen index](#screen-index), the component set on the last page
   (raster export at 2×, so the file stays small enough for the repository)
@@ -94,7 +96,10 @@ letter-spaced text is kept for eyebrows, table headers and chips.
 
 The `Components` page holds the reusable set (component sets drawn with the dashed purple
 outline in Figma), in eight numbered sections. Each one maps to a Thymeleaf fragment in
-`templates/fragments/`.
+`templates/fragments/`. Every component with text (button, form controls, table row, status
+chips, flash messages, crew assignment row) uses **auto layout**: the button is a horizontal
+auto-layout frame with 16 px side padding and a 7 px gap, sized to *hug* its label, so a longer
+Croatian label widens the button instead of overflowing it. Icons are fixed-size vectors.
 
 | Section | Component | Variants | Fragment |
 |---|---|---|---|
@@ -339,8 +344,17 @@ per screen, is the Figma frame → template table in the README.
 
 ## Clickable flow
 
-Presentation mode starts at **Flow 1 – Sites**: Sites list → New site, and Sites list → Site
-detail → Site settings (edit site), with the sidebar links and the notification panel (overlay)
-wired, which gives the clickable flow of at least four steps the assignment asks for. The daily
-log flow (daily logs list → New daily log → validation errors → saved → detail) is drawn frame by
-frame and can be followed in the PDF in the same order.
+The whole prototype is wired in presentation mode from one starting point, **Flow 1 – Sites**
+([open the prototype](https://www.figma.com/proto/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=20-3626&starting-point-node-id=20%3A3626)).
+The sidebar links connect every section (Sites, Incidents, Assisted reporting, Compliance,
+Account, Administration, Notifications), the bell opens the notifications panel as an overlay,
+and the main task can be followed click by click:
+
+1. Sites list → site card → **Site detail**;
+2. Site detail → *Daily logs* tab → **New daily log**;
+3. Daily log form → *Save daily log* with empty fields → **form with validation errors**;
+4. corrected form → *Save daily log* → **site overview with the "Daily log saved" flash**;
+5. a row of the recent logs → **Daily log detail**.
+
+Branches from the same start cover New site, Site settings (edit site), the incident and AI
+screens and the mobile frames.

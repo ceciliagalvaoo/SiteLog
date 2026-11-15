@@ -5,6 +5,6 @@
     "type": "generated-index",
     "slug": "/adr",
     "title": "Architecture decision records",
-    "description": "Each ADR records one decision: context, the decision, rejected alternatives and the consequences accepted."
+    "description": "Each ADR records one decision: context, the decision, rejected alternatives and the consequences accepted. Number 0002 is reserved for the AI integration ADR, written in M3 together with the AI feature."
   }
 }

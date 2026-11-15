@@ -11,13 +11,14 @@ description: How changes to a reopened daily log are recorded — Hibernate Enve
 - **Status:** Accepted
 - **Decision date:** 2026-10-31
 - **Written:** 2026-11-04
-- **Milestone:** M2 (schema), M3 (implementation)
+- **Milestone:** M2 (schema and Envers mapping), M3 (reopen workflow and audit view)
 
-:::info Status of the implementation
-Decision only. The audit tables are created by the Flyway migration
-`V3__incidents_and_reopen.sql` and made append-only by `V5__append_only_audit_tables.sql`
-(milestone M2); the `hibernate-envers` dependency, `@Audited` mappings, revision entity and
-the before/after screen arrive with the audited reopen in M3.
+:::info Status of the implementation (2026-11-15)
+| When | What |
+|---|---|
+| M2, 2026-11-04 | Audit tables created by `V3__incidents_and_reopen.sql`, made append-only by `V5__append_only_audit_tables.sql`. |
+| M2, week 7 | `hibernate-envers` added; `@Audited` on `DailyLog`, `WorkEntry`, `CrewAssignment` with `NOT_AUDITED` references; revision entity `AuditRevision` (`revinfo`) and `AuditRevisionListener` (user email, or `system`); `DefaultAuditStrategy` set in `application.yml`. Every change to the aggregate made through the application is audited from now on. `EntityMappingTests` checks that audit rows are written with the user. |
+| M3 (planned) | Reopen request / approval / rejection workflow, the domain `@Aspect` (decision 6) and the before/after view built from the revisions. |
 :::
 
 ## Context

@@ -6,17 +6,16 @@ description: System context, containers, components, layering rules, profiles, r
 
 # Architecture overview
 
-:::info Status (2026-11-04, milestone M2)
-Written before the domain code. **Implemented** today: the M1 skeleton —
-`SiteLogApplication`, `config/SecurityConfig` (temporary form login, public health check),
-Flyway `V1__baseline.sql`, `ddl-auto=validate`, `open-in-view=false`, the `dev` profile and
-Testcontainers integration tests — plus, from M2, the database: migrations `V2`–`V5` (tables,
-constraints, lock triggers, append-only audit tables, demo data). Everything else on this page is the **planned** design;
-each section names the milestone that delivers it. The domain is described in the
-[domain model](./domain-model.md); persistence choices in
-[ADR-0001](../adr/0001-persistence-model.md); the reopen audit trail in
-[ADR-0003](../adr/0003-reopen-audit-trail.md); the physical schema created by the Flyway
-migrations `V2`–`V5` in [Database schema](./database.md).
+:::info Status (2026-11-15, milestone M2)
+**Implemented** today: the M1 skeleton (`SiteLogApplication`, temporary `SecurityConfig`,
+Flyway, `ddl-auto=validate`, `open-in-view=false`, the `dev` profile, Testcontainers tests) and,
+from M2, the database (migrations `V2`–`V6`), the JPA entities with the Envers mapping, the
+services and the Thymeleaf screens for sites, crews, daily logs (with work entries and crew
+rows), notifications and the error pages, in English and Croatian. Everything marked M3/M4 on
+this page is **planned**. The domain is described in the [domain model](./domain-model.md);
+persistence choices in [ADR-0001](../adr/0001-persistence-model.md); the reopen audit trail in
+[ADR-0003](../adr/0003-reopen-audit-trail.md); the physical schema in
+[Database schema](./database.md).
 :::
 
 ## 1. System context
@@ -48,7 +47,7 @@ flowchart TB
 
 | Element | Status |
 |---|---|
-| Four roles | Planned for M3 (Spring Security with real users). Today: one generated default user. |
+| Four roles | Planned for M3 (Spring Security with real users). Today: one generated default user for the login, and the services act as the seed user `manager@sitelog.test` (`sitelog.current-user.email`). |
 | Supabase PostgreSQL | Chosen in M1 ([ADR-0001](../adr/0001-persistence-model.md)); first deployment in M3. |
 | Anthropic API | Chosen in M1; AI feature in M3 (ADR-0002). Called only when profile `ai` is active. |
 | GitHub Pages | Implemented: `docs.yml` publishes this site. It is not the application deployment. |
@@ -88,81 +87,88 @@ flowchart LR
 | Container | Technology | Status |
 |---|---|---|
 | SiteLog application | Spring Boot 4.1 jar in a Docker image on Render | Skeleton runs locally (M1). Dockerfile and Render deployment: M3. |
-| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V5` ([Database schema](./database.md)). Supabase: M3. |
+| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V6` ([Database schema](./database.md)). Supabase: M3. |
 | AI provider | Anthropic Claude through Spring AI 2.x | M3. |
 | CI | GitHub Actions `ci.yml` (`./mvnw verify`), `docs.yml` (this site) | Implemented (M1). |
 
 ## 3. Components (inside the application)
 
-Base package `hr.algebra.sitelog`, split **by feature**, each feature split **by layer**.
+Base package `hr.algebra.sitelog`, split **by feature**, each feature split **by layer**
+(`domain`, `repository`, `service`, `web`). The diagram shows the packages that exist in M2
+(solid) and the ones planned for M3–M4 (dashed).
 
 ```mermaid
 flowchart TB
     subgraph dailylog["dailylog (detail of one feature)"]
         direction TB
-        dl_web["web<br/>DailyLogController, DailyLogForm"]
-        dl_api["api<br/>DailyLogApiController,<br/>request/response records, mapper"]
-        dl_service["service<br/>DailyLogService<br/>@Transactional, @PreAuthorize"]
-        dl_repo["repository<br/>DailyLogRepository<br/>(Spring Data JPA, fetch joins)"]
-        dl_domain["domain<br/>DailyLog, WorkEntry, CrewAssignment,<br/>LogReopenRequest, LogStatus"]
+        dl_web["web<br/>DailyLogController, WorkEntryController,<br/>CrewAssignmentController, nested forms, RowActions"]
+        dl_service["service<br/>DailyLogService, WorkEntryService,<br/>CrewAssignmentService, DailyLogAssembler,<br/>DailyLogRules, commands and view records"]
+        dl_repo["repository<br/>DailyLogRepository (fetch joins,<br/>DailyLogSummary projection), WorkEntry-,<br/>CrewAssignment-, LogReopenRequestRepository"]
+        dl_domain["domain<br/>DailyLog, WorkEntry, CrewAssignment,<br/>LogReopenRequest, LogStatus, ReopenStatus, Weather"]
         dl_web --> dl_service
-        dl_api --> dl_service
         dl_service --> dl_repo
         dl_service --> dl_domain
         dl_repo --> dl_domain
     end
 
     subgraph features["other features (same layers)"]
-        site["site"]
-        crew["crew"]
-        incident["incident"]
-        report["report<br/>(AR3 aggregate queries)"]
-        user["user"]
+        site["site<br/>CRUD, Active/Finished filter"]
+        crew["crew<br/>CRUD, deactivate"]
+        notification["notification<br/>bell, list, mark as read"]
+        incident["incident<br/>entities, repositories,<br/>IncidentStatsService"]
+        user["user<br/>AppUser, Role,<br/>CurrentUserProvider"]
     end
 
-    subgraph ai["ai"]
-        port["IncidentDraftExtractor<br/>[port, interface]"]
-        claude["AnthropicIncidentDraftExtractor<br/>@Profile ai"]
-        stub["StubIncidentDraftExtractor<br/>@Profile stub"]
-        claude -.->|implements| port
-        stub -.->|implements| port
+    subgraph common["common + config"]
+        c_web["common.web<br/>WebExceptionHandler, LayoutModelAdvice,<br/>Flash, SafeRedirects, Pages"]
+        c_other["common.exception / validation /<br/>audit / domain / time"]
+        config["config<br/>SecurityConfig (temporary), WebConfig (locale)"]
     end
 
-    subgraph crosscut["cross-cutting"]
-        security["security<br/>SecurityFilterChain,<br/>UserDetailsService, method security"]
-        common["common<br/>exception handlers (ProblemDetail, flash),<br/>audit @Aspect, Envers revision entity"]
-        config["config<br/>SecurityConfig (today), Spring beans"]
-        jobs["scheduled jobs<br/>@Scheduled + ShedLock"]
+    subgraph planned["planned"]
+        api["api packages, REST /api/v1 (M3)"]:::planned
+        ai["ai: IncidentDraftExtractor port,<br/>Anthropic + stub adapters (M3)"]:::planned
+        report["report: compliance, AR3 (M4)"]:::planned
+        jobs["scheduled jobs + ShedLock (M4)"]:::planned
     end
 
-    incident --> port
     dl_service --> site
     dl_service --> crew
-    jobs --> incident
-    jobs --> dl_service
-    common -.->|"advises services"| dl_service
-    security -.->|"filters requests,<br/>guards service methods"| dl_web
+    dl_service --> user
+    c_web --> notification
+    c_web --> incident
+    c_web --> user
+    c_web -.->|"advises every @Controller"| dl_web
+    classDef planned stroke-dasharray: 5 5
 ```
 
-| Package | Responsibility | Status |
+| Package | Contents today | Status |
 |---|---|---|
-| `config` | Spring configuration; today the temporary `SecurityConfig`. | Implemented (M1, temporary). |
-| `site`, `crew`, `user` | Admin-managed reference data. | M2 (CRUD), `user` with roles in M3. |
-| `dailylog` | Aggregate `DailyLog → WorkEntry → CrewAssignment`, sign-off, reopen (AR1). | M2 (CRUD), M3 (lock + audited reopen). |
-| `incident` | Aggregate `Incident → CorrectiveAction`, severity workflow (AR2). | M2 (entities), M3 (workflow). |
+| `config` | `SecurityConfig` (temporary form login, public health check and static assets), `WebConfig` (`CookieLocaleResolver` + `LocaleChangeInterceptor`). | M1/M2. Security with real users and roles replaces `SecurityConfig` in M3. |
+| `common.domain` | `BaseEntity`: identity key, equality by id. | M2. |
+| `common.exception` | `DomainException` (message key + arguments) and its subclasses `NotFoundException`, `InvalidFieldException`, `InvalidTransitionException`, `LogLockedException`, `DeletionNotAllowedException`. | M2. |
+| `common.validation` | `@Chronological` class-level constraint (end not before start) and its validator. | M2. |
+| `common.audit` | Envers revision entity `AuditRevision` (`revinfo`) and `AuditRevisionListener` (stores the user's email, or `system`). | M2 (mapped and writing revisions). |
+| `common.time` | `TimeConfig`: one `Clock` bean in `sitelog.time-zone` (Europe/Zagreb). | M2. |
+| `common.web` | `WebExceptionHandler`, `LayoutModelAdvice` (the two `@ControllerAdvice`s, section 7), `Flash` (flash message keys), `SafeRedirects` (back to the referer only if it is a local path), `Pages` (caps page size and whitelists sort fields). | M2. |
+| `user` | `AppUser`, `Role`, `RoleName`; `CurrentUserProvider` with `ConfiguredCurrentUserProvider` (M2 stand-in that acts as a configured seed user). | M2; login and roles in M3. |
+| `site` | CRUD screens, `Active` / `Finished` filter computed in the query, delete rule. | M2. |
+| `crew` | CRUD screens, delete only if unused, otherwise deactivate. | M2. |
+| `dailylog` | Aggregate `DailyLog → WorkEntry → CrewAssignment`: nested form, separate work entry and crew row pages, detail with lock notice, sign-off, delete; `LogReopenRequest` entity. | M2 (CRUD, sign-off, lock). Reopen workflow and audit view: M3. |
+| `incident` | `Incident`, `CorrectiveAction`, enums, repositories; `IncidentStatsService` (open incident counter in the sidebar). | M2 (entities). Screens and severity workflow (AR2): M3. |
+| `notification` | `Notification` entity, bell data, list page, *mark as read*, *mark all as read*, *open*. | M2 (reading). Producers: M3/M4. |
+| `api` (per feature) | REST controllers under `/api/v1`, request/response records, `@RestControllerAdvice` with `ProblemDetail`, springdoc. | M3. |
+| `ai` | Port `IncidentDraftExtractor`, Anthropic and stub adapters, draft review flow. | M3. |
 | `report` | Compliance report per site and period (AR3). | M4. |
-| `ai` | Port `IncidentDraftExtractor` and its two adapters; draft review flow. | M3. |
-| `security` | Users, roles, `SecurityFilterChain`, method security. Replaces `config/SecurityConfig`. | M3. |
-| `common` | Shared exceptions and handlers, audit aspect, Envers revision entity and listener. | M2–M3. |
 | Scheduled jobs | Overdue corrective actions, unsigned log reminder; lock strategy in ADR-0004. | M4. |
 
 ## 4. Layering rules
 
 | Layer | Contains | May call | Must not |
 |---|---|---|---|
-| `web` | `@Controller`, form objects (`DailyLogForm`, Bean Validation annotations), view names | its feature's `service` | contain business rules; touch repositories; open transactions; put entities in a form backing object |
+| `web` | `@Controller`, form objects (`DailyLogForm`, `WorkEntryForm`, ...; Bean Validation annotations), view names | its own and other features' `service` (for example the crew options of the daily log form) | contain business rules; touch repositories; open transactions; put entities in a form backing object |
 | `api` | `@RestController` under `/api/v1/...`, request/response **records**, mappers entity → record | its feature's `service` | return entities; contain business rules |
-| `service` | `@Service` classes: business rules, state transitions, authorization (`@PreAuthorize`), transactions (`@Transactional`, `readOnly = true` for reads) | own `repository`, other features' `service`, the AI port | depend on `web`/`api` types (HTTP, `Model`, `RedirectAttributes`) |
+| `service` | `@Service` classes: business rules, state transitions, transactions (class-level `@Transactional(readOnly = true)`, `@Transactional` on writes), authorization (`@PreAuthorize`, M3); **commands** in (`DailyLogCommand`, ...) and **view records** out (`DailyLogDetails`, `SiteListItem`, ...) | own `repository`, other features' `repository` for existence checks of the delete rules, other features' `service`, the AI port (M3) | depend on `web`/`api` types (HTTP, `Model`, `RedirectAttributes`); return entities to controllers |
 | `repository` | Spring Data JPA interfaces; JPQL with fetch joins / `@EntityGraph`; record projections for reports | — | contain business decisions |
 | `domain` | JPA entities, enums, domain exceptions; invariants that depend only on the entity's own state | — | depend on Spring MVC or on other layers |
 
@@ -174,12 +180,12 @@ Rules applied everywhere:
 - **Forms and DTOs are not entities.** Forms live in `web`, request/response records and their
   mappers in `api`. Mapping happens inside the service transaction or from a fully loaded
   object, because `open-in-view=false` makes lazy loading outside a transaction fail.
-- **Domain exceptions → HTTP.** Services throw domain exceptions (for example "log is
-  locked", "not found", "invalid transition"). For the REST API a `@RestControllerAdvice`
-  turns them into `ProblemDetail` (400 validation, 404 not found, 409 conflict / locked log /
-  stale version, 422 business rule, 429 AI request cap). For screens a `@ControllerAdvice`
-  (or the controller) turns them into a flash error and a redirect. Exception names are fixed
-  when the code exists (M2–M3).
+- **Domain exceptions → HTTP.** Services throw subclasses of `DomainException`, which carry a
+  message key and arguments, never translated text. For screens: `InvalidFieldException` is
+  caught by the controller and put on the form field (form re-rendered); everything else goes
+  to `WebExceptionHandler` (section 7). For the REST API (M3) a `@RestControllerAdvice` turns
+  the same exceptions into `ProblemDetail` (400 validation, 404 not found, 409 conflict / locked
+  log / stale version, 422 business rule, 429 AI request cap).
 - **Schema only through Flyway**; Hibernate validates (`ddl-auto=validate`). Implemented.
 
 ## 5. Profiles
@@ -190,7 +196,7 @@ environment.
 
 | Profile | Datasource | AI adapter | Secrets come from | Status |
 |---|---|---|---|---|
-| `dev` | PostgreSQL 17 from `docker-compose.yml`, pool size 5 | — (combine with `stub` or `ai`) | git-ignored `.env` (template `.env.example`), read by Docker Compose and by Spring (`spring.config.import`) | Implemented (M1). |
+| `dev` | PostgreSQL 17 from `docker-compose.yml`; pool settings shared from `application.yml` (5 by default) | — (combine with `stub` or `ai`) | git-ignored `.env` (template `.env.example`), read by Docker Compose and by Spring (`spring.config.import`) | Implemented (M1). |
 | `test` | Testcontainers `postgres:17-alpine`, connection injected by `@ServiceConnection` | `stub` | none (container credentials are generated) | Testcontainers implemented (M1) without a named profile; `test` profile with the stub adapter in M3. |
 | `stub` | — | `StubIncidentDraftExtractor`: deterministic drafts, no network | none | M3. Always used in tests and CI. |
 | `ai` | — | `AnthropicIncidentDraftExtractor` via Spring AI 2.x; cheap configurable model, low `max-tokens`, request cap | `ANTHROPIC_API_KEY` environment variable | M3. |
@@ -220,18 +226,18 @@ sequenceDiagram
         C-->>M: 200, form re-rendered with field errors (no service call, no transaction)
     else form valid
         C->>S: create(siteId, command built from the form)
-        S->>S: @PreAuthorize (SITE_MANAGER of this site), evaluated before the transaction
+        S->>S: @PreAuthorize (SITE_MANAGER of this site, M3), evaluated before the transaction
         Note over S,DB: @Transactional begins (connection taken from HikariCP)
-        S->>R: load Site, check no log exists for (site, date)
+        S->>R: load Site, check date not in the future and no log exists for (site, date)
         R->>DB: SELECT
         S->>R: save(new DailyLog, status DRAFT)
         R->>DB: INSERT daily_log (and daily_log_aud + revinfo via Envers)
         Note over S,DB: commit: flush, UNIQUE (site_id, log_date) checked, connection returned
         S-->>C: id of the new log (no entity leaves the service)
-        C-->>M: 302 redirect to /daily-logs/id, flash "Log created"
-        M->>C: GET /daily-logs/id
-        C->>S: findDetail(id), @Transactional(readOnly = true), fetch join
-        C-->>M: 200, detail page with flash message
+        C-->>M: 302 redirect to /sites/42, flash "Daily log saved"
+        M->>F: GET /sites/42
+        F->>C: SiteController.detail (read-only service calls, no entity in the model)
+        C-->>M: 200, site overview with the flash message
     end
 ```
 
@@ -249,7 +255,8 @@ sequenceDiagram
   response record; a validation error answers 400 and a domain error its `ProblemDetail`
   status, instead of a re-rendered form or a flash message.
 
-Status: M2 (screens and service), M3 (`@PreAuthorize` with real roles, REST API, Envers).
+Status: screens, service and Envers implemented (M2); `@PreAuthorize` with real roles and the
+REST variant in M3.
 
 ### 6.2 Signing off a daily log, and two users at the same time
 
@@ -307,8 +314,11 @@ sequenceDiagram
   reopened are read back from the Envers revisions
   ([ADR-0003](../adr/0003-reopen-audit-trail.md)).
 
-Status: triggers and `version` columns implemented (migrations `V2`, `V3`); service logic, reopen
-and the concurrency test in M3–M4.
+Status: implemented in M2 for sign-off and child edits — version check in the service
+(`DailyLogRules.requireVersion`), `OPTIMISTIC_FORCE_INCREMENT` (`findForChildUpdateById`),
+triggers, 409 page. The stale-version and lock cases are tested against PostgreSQL in `DailyLogAggregateFlowTests`
+(`childChangeBumpsTheLogVersionAndAStaleVersionIsRefused`, `signOffLocksTheLogAndItsChildren`).
+The reopen workflow is M3; a test with two threads signing off at the same time is M4.
 
 ### 6.3 Shift note → AI draft → supervisor review
 
@@ -343,10 +353,26 @@ ADR-0002 and `docs/ai-evaluation.md`).
 | Concern | Design | Status |
 |---|---|---|
 | **Security** | Form login with users from the database (BCrypt), four roles. URL rules in the `SecurityFilterChain` (public: health check, login, static assets); business authorization with `@PreAuthorize` on service methods, including ownership checks (a site manager only edits logs of the sites they manage). The Thymeleaf security dialect hides actions; it does not replace the service check. REST API secured with the same rules. | Temporary `SecurityConfig` implemented (M1). Real users and roles: **planned for M3**. |
-| **Auditing** | Three layers: `LogReopenRequest` records **why** and who requested/approved; a domain `@Aspect` records **which action** (sign-off, reopen, incident transitions) and by whom; Hibernate Envers records **what changed** (before/after per revision) on `DailyLog`, `WorkEntry`, `CrewAssignment`. See [ADR-0003](../adr/0003-reopen-audit-trail.md). | Tables in the M2 migrations; behaviour **planned for M3**. |
-| **Concurrency** | `@Version` on `DailyLog` and `Incident`; `OPTIMISTIC_FORCE_INCREMENT` when a child changes; conflict → 409 (section 6.2). | Columns in M2; services M2–M3; concurrency test **planned for M4**. |
-| **i18n** | All UI text from `messages.properties` (en) and `messages_hr.properties` (hr); language switcher stored in a cookie; the user's `preferred_language` applied at login. Validation messages also translated. | **Planned for M4** (keys introduced with each screen from M2). |
-| **Error handling** | Domain exceptions thrown by services; `@RestControllerAdvice` → `ProblemDetail` for `/api/v1`; screens get flash errors or an error page. No stack traces or internal messages in responses (`include-stacktrace: never`, `include-message: never` outside `dev`). | Response settings implemented (M1); handlers **planned for M2–M3**. |
+| **Auditing** | Three layers: `LogReopenRequest` records **why** and who requested/approved; a domain `@Aspect` records **which action** (sign-off, reopen, incident transitions) and by whom; Hibernate Envers records **what changed** (before/after per revision) on `DailyLog`, `WorkEntry`, `CrewAssignment`. See [ADR-0003](../adr/0003-reopen-audit-trail.md). | Envers **implemented in M2**: `@Audited` on the three entities, `AuditRevision` + `AuditRevisionListener` write `revinfo` with the user (or `system`), append-only tables (V5). Reopen workflow, `@Aspect` and the before/after view: **M3**. |
+| **Concurrency** | `@Version` on `DailyLog` and `Incident`; `OPTIMISTIC_FORCE_INCREMENT` when a child changes; conflict → 409 (section 6.2). | Implemented in M2 (version from the form, forced increment, 409 page). Two-thread sign-off test **planned for M4**. |
+| **i18n** | All UI text from `messages.properties` (en) and `messages_hr.properties` (hr); `fallback-to-system-locale: false`, so an unsupported language falls back to English. `WebConfig`: `?lang=hr` is read by a `LocaleChangeInterceptor` and stored in the `lang` cookie by a `CookieLocaleResolver` (default English, one year); an invalid value is ignored. Flash messages and domain errors are message keys, translated when the page renders. | **Implemented in M2** for every existing screen, validation and error page. Applying the user's `preferred_language` at login: **M3**. |
+| **Error handling** | Domain exceptions thrown by services; `@RestControllerAdvice` → `ProblemDetail` for `/api/v1`; screens get flash errors or an error page. No stack traces or internal messages in responses (`include-stacktrace: never`, `include-message: never` outside `dev`). | Screens **implemented in M2** (see below); REST `ProblemDetail` handler **M3**. |
 | **Scheduling** | Two daily `@Scheduled` jobs (overdue corrective actions, unsigned log reminder), protected against double execution by ShedLock (ADR-0004). Each job calls a service method, which holds the transaction. | **Planned for M4**. |
-| **Transactions** | `@Transactional` on services only (`readOnly = true` for queries); `open-in-view=false`. | `open-in-view=false` implemented (M1). |
+| **Transactions** | `@Transactional` on services only (`readOnly = true` for queries); `open-in-view=false`. | Implemented (M1/M2). |
 | **Health** | `/actuator/health` public, used by Docker and the Render health check; no details exposed. | Implemented (M1). |
+
+### Controller advices (screens)
+
+Two `@ControllerAdvice` classes in `common.web` serve the Thymeleaf screens.
+
+| Advice | Scope | What it does |
+|---|---|---|
+| `WebExceptionHandler` | `annotations = Controller.class` | Optimistic-lock conflict (stale version from the form, or concurrent commit) → **409** page `error/409` with "changed by someone else" and a reload link. `LogLockedException` → redirect to the log detail with an error flash. `InvalidTransitionException`, `DeletionNotAllowedException` → redirect back (`SafeRedirects`) with the error flash. `NotFoundException` → **404** page. `DataAccessException` whose cause is the `daily_log_locked` trigger message, or any `DataIntegrityViolationException` → **409** page; anything else is re-thrown to the generic error page. |
+| `LayoutModelAdvice` | `basePackages = "hr.algebra.sitelog"` | Adds what the layout needs to every model: `currentUser`, `unreadCount`, the newest 10 unread `notifications`, `openIncidentCount`. |
+
+`LayoutModelAdvice` is restricted to the application's own package on purpose: Spring Boot's
+`BasicErrorController` (403, 404 for unknown URLs, 500) must render even when the database is the
+cause of the error, so the error pages do not query it, and the layout treats those attributes as
+optional. The error templates (`error/403.html`, `404`, `409`, `500`, fallback `error.html`) show
+translated text only, never a stack trace or exception message.
+

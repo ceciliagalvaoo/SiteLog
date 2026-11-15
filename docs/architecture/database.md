@@ -1,18 +1,21 @@
 ---
 title: Database schema
 sidebar_position: 3
-description: Physical PostgreSQL schema created by the Flyway migrations V1–V5 — tables, constraints, indexes, lock triggers, append-only Envers audit tables and demo data.
+description: Physical PostgreSQL schema created by the Flyway migrations V1–V6 — tables, constraints, indexes, lock triggers, append-only Envers audit tables, notifications and demo data.
 ---
 
 # Database schema
 
-:::info Status (2026-11-04, milestone M2)
-This page describes the schema exactly as the Flyway migrations in
+:::info Status (2026-11-15, milestone M2)
+This page describes the schema exactly as the Flyway migrations `V1`–`V6` in
 `src/main/resources/db/migration/` create it. **The migrations are the source of truth**; if this
-page and a migration disagree, the migration wins. Every rule below is covered by an integration
-test against PostgreSQL 17 (Testcontainers) in `src/test/java/hr/algebra/sitelog/db/`.
-JPA entities, services and Envers mappings are not written yet; they must match this schema
-because Hibernate runs with `ddl-auto=validate`.
+page and a migration disagree, the migration wins. The V2–V5 rules are covered by integration
+tests against PostgreSQL 17 (Testcontainers) in `src/test/java/hr/algebra/sitelog/db/`; for V6 the
+repository queries are tested (`NotificationRepositoryTests`), the two `CHECK` constraints are not
+yet.
+The JPA entities and the Envers mappings exist (M2) and Hibernate checks them against this schema
+at startup (`ddl-auto=validate`). There is no JPA entity for `incident_draft` yet (AI feature, M3);
+the table is only read by a native existence query (site delete rule).
 
 Related pages: [domain model](./domain-model.md) (entities, roles, state machines),
 [architecture overview](./overview.md) (layers and request flows),
@@ -29,6 +32,9 @@ Related pages: [domain model](./domain-model.md) (entities, roles, state machine
 | `V3__incidents_and_reopen.sql` | `incident`, `incident_affected_crew`, `corrective_action`, `log_reopen_request`, `incident_draft`; the lock functions and triggers for signed-off daily logs; the Envers tables `revinfo`, `daily_log_aud`, `work_entry_aud`, `crew_assignment_aud`. |
 | `V4__seed_demo_data.sql` | Demo data: 5 users, 3 sites, 6 crews, 8 daily logs with work entries and crew assignments, reopen requests, incidents, corrective actions, AI drafts. |
 | `V5__append_only_audit_tables.sql` | Triggers that make the four audit tables append-only (no `UPDATE`, `DELETE`, `TRUNCATE`). |
+| `V6__notifications.sql` | `notification` (in-app notifications under the bell icon) and its index `ix_notification_recipient_read`. |
+
+Committed migrations are never edited; a change to the schema is a new `V7__...` file.
 
 Conventions used in every migration (stated in the V2 header):
 
@@ -78,6 +84,7 @@ erDiagram
     daily_log ||..o{ daily_log_aud : "audited as"
     work_entry ||..o{ work_entry_aud : "audited as"
     crew_assignment ||..o{ crew_assignment_aud : "audited as"
+    app_user ||--o{ notification : "recipient_id"
 
     role {
         bigint id PK
@@ -150,6 +157,13 @@ erDiagram
         bigint reviewed_by FK "nullable"
         bigint incident_id FK, UK "nullable"
         varchar status
+    }
+    notification {
+        bigint id PK
+        bigint recipient_id FK "index with read_at"
+        varchar type
+        varchar link "relative path"
+        timestamptz read_at "null while unread"
     }
     revinfo {
         bigint rev PK "identity"
@@ -356,6 +370,34 @@ see [Integrity rules](#integrity-rules-in-the-database).
 
 Also `ck_incident_draft_review` and `ck_incident_draft_incident`, see below.
 
+### `notification` (V6) — in-app notifications
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | `bigint` identity | NN | PK |
+| `recipient_id` | `bigint` | NN | `fk_notification_recipient` → `app_user(id)`; covered by `ix_notification_recipient_read` (leading column) |
+| `type` | `varchar(40)` | NN | `ck_notification_type`: `CORRECTIVE_ACTION_OVERDUE`, `DAILY_LOG_UNSIGNED`, `REOPEN_REQUESTED`, `HIGH_SEVERITY_INCIDENT` (Java enum `NotificationType`) |
+| `title` | `varchar(200)` | NN | `ck_notification_title`: `btrim(title) <> ''` |
+| `body` | `varchar(1000)` | null | |
+| `link` | `varchar(500)` | null | `ck_notification_link_relative`: `link IS NULL OR (link LIKE '/%' AND link NOT LIKE '//%')` |
+| `created_at` | `timestamptz` | NN | default `now()` |
+| `read_at` | `timestamptz` | null | `NULL` while unread; set once when the recipient marks it as read |
+
+- **Relative link only.** The check accepts an application path such as `/daily-logs/42` and
+  rejects an absolute URL (`https://...`) and a protocol-relative one (`//host/...`). The
+  application checks the same thing again before redirecting (`NotificationController.open` uses
+  `SafeRedirects.isLocalPath`), so opening a notification never sends the user to another site.
+- **Only the recipient sees it.** Every service query filters by the current user
+  (`findByIdAndRecipient_Id`); another user's notification id answers 404.
+- **Index `ix_notification_recipient_read (recipient_id, read_at)`** serves the two queries the
+  layout runs on every page: the unread counter and the newest unread items for the bell
+  (`recipient_id = ? AND read_at IS NULL`). Its leading column also covers the foreign key.
+- **No producer yet.** Nothing inserts notifications in M2; the bell, the list page and
+  *mark as read* work on existing rows. The producers (scheduled jobs and domain events) come in
+  M3/M4. Decision of 2026-11-08: a notification will store a **message key and its arguments**
+  instead of finished text, so it is shown in the reader's language. If that needs a column for
+  the arguments, it is added by a new migration; V6 stays as committed.
+
 ### Audit tables (V3, append-only since V5)
 
 `revinfo`, `daily_log_aud`, `work_entry_aud`, `crew_assignment_aud`: described in
@@ -369,7 +411,7 @@ violation raises SQLSTATE `23514` (check), `23505` (unique) or `23503` (foreign 
 
 | Rule | Constraint | Definition |
 |---|---|---|
-| Enumerations match the Java enums | `ck_role_name`, `ck_daily_log_status`, `ck_daily_log_weather`, `ck_incident_severity`, `ck_incident_category`, `ck_incident_status`, `ck_corrective_action_status`, `ck_log_reopen_request_status`, `ck_incident_draft_severity`, `ck_incident_draft_category`, `ck_incident_draft_status`, `ck_app_user_language` | `column IN (...)`. A `CHECK` passes on `NULL`, so nullable columns (`weather`, draft `severity`/`category`) accept `NULL`. |
+| Enumerations match the Java enums | `ck_role_name`, `ck_daily_log_status`, `ck_daily_log_weather`, `ck_incident_severity`, `ck_incident_category`, `ck_incident_status`, `ck_corrective_action_status`, `ck_log_reopen_request_status`, `ck_incident_draft_severity`, `ck_incident_draft_category`, `ck_incident_draft_status`, `ck_app_user_language`, `ck_notification_type` | `column IN (...)`. A `CHECK` passes on `NULL`, so nullable columns (`weather`, draft `severity`/`category`) accept `NULL`. |
 | Hours worked between 0 and 24 | `ck_crew_assignment_hours` | `hours_worked > 0 AND hours_worked <= 24` (0 itself is rejected) on a `numeric(4,2)` column. |
 | At least one worker | `ck_crew_assignment_workers` | `worker_count > 0` |
 | One log per site and day | `uk_daily_log_site_date` | `UNIQUE (site_id, log_date)` |
@@ -384,11 +426,17 @@ violation raises SQLSTATE `23514` (check), `23505` (unique) or `23503` (foreign 
 | Decided draft records the reviewer | `ck_incident_draft_review` | `status IN ('PENDING_REVIEW','NEEDS_MANUAL_INPUT') OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)` |
 | Only an accepted draft points to an incident | `ck_incident_draft_incident` + `uk_incident_draft_incident` | `(status = 'ACCEPTED') = (incident_id IS NOT NULL)`; one draft per incident at most. |
 | Dates in order | `ck_site_dates`, `ck_work_entry_times`, `ck_log_reopen_request_dates` | end after start (site: `>=`; work entry: `>`); decision not before request. |
+| Notification links stay inside the application | `ck_notification_link_relative` | `link IS NULL OR (link LIKE '/%' AND link NOT LIKE '//%')` |
+| Notification has a title | `ck_notification_title` | `btrim(title) <> ''` |
 | Case-insensitive unique email | `ck_app_user_email_lower` + `uk_app_user_email` | `email = lower(email)` |
 
-Not enforced by the database (service only): that `site.manager_id` is a `SITE_MANAGER`, who may
-sign off which severity, the order of incident and draft state transitions, and ownership of a
-site. For daily logs, only the transitions out of `SIGNED_OFF` are restricted by the database
+Not enforced by the database (service only): that `site.manager_id` is an active `SITE_MANAGER`,
+who may sign off which severity, the order of incident and draft state transitions, ownership of
+a site, the daily log rules confirmed on 2026-11-08 (log date not in the future, sign-off needs
+at least one work entry, an inactive crew cannot be chosen for a new assignment) and the delete
+rules of 2026-11-07 ([domain model](./domain-model.md#delete-rules)). The foreign keys without
+cascade are the database backstop of the delete rules: a delete the service let through by mistake
+still fails. For daily logs, only the transitions out of `SIGNED_OFF` are restricted by the database
 (next section).
 
 ## Locked daily logs

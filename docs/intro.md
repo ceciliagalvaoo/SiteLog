@@ -45,13 +45,16 @@ site is published separately on GitHub Pages.
 
 ## Status
 
-Milestone M1 (project setup and design). The features above are the planned scope and are
-implemented in milestones M2–M4; each page states what already exists.
+Milestone M2 (2026-11-15): database (Flyway `V1`–`V6`), JPA entities with Envers auditing, and
+the screens for sites, crews, daily logs (work entries, crew rows, sign-off and lock) and
+notifications, in English and Croatian. Incidents, the reopen workflow, the compliance report, the
+AI draft and the scheduled jobs follow in M3–M4; each page states what already exists.
 
 ## Where to go next
 
 - [Domain model](./architecture/domain-model.md) — entities, relations, roles, state machines.
 - [Architecture overview](./architecture/overview.md) — system context, containers, packages, layering rules, profiles, request flows.
 - [ADR-0001 Persistence model](./adr/0001-persistence-model.md) — database, migrations, mapping choices.
+- [Database schema](./architecture/database.md) — tables, constraints, triggers, audit tables, demo data.
 - [ADR-0003 Reopen audit trail](./adr/0003-reopen-audit-trail.md) — how changes to a reopened log are recorded (Hibernate Envers).
 - Source code and `README.md` (how to run): [github.com/ceciliagalvaoo/SiteLog](https://github.com/ceciliagalvaoo/SiteLog).
