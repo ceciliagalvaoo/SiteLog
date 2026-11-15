@@ -116,12 +116,13 @@
 	<th:block sec:authorize="hasRole('INSPECTOR')" th:text="#{role.INSPECTOR}">Inspector</th:block>
 </th:block>
 
-<!-- language switcher: ?lang=xx is read by the LocaleChangeInterceptor and stored in a cookie -->
+<!-- language switcher: ?lang=xx is read by the LocaleChangeInterceptor and stored in a cookie;
+     langUrls (LanguageLinkAdvice) keeps the rest of the query string -->
 <div th:fragment="langSwitch" class="lang-switch" role="group" th:aria-label="#{lang.label}">
-	<a href="?lang=en" hreflang="en" lang="en"
+	<a href="?lang=en" th:href="${langUrls == null ? '?lang=en' : langUrls['en']}" hreflang="en" lang="en"
 	   th:aria-current="${#locale.language == 'en'} ? 'true'"
 	   th:title="#{lang.en}">EN</a>
-	<a href="?lang=hr" hreflang="hr" lang="hr"
+	<a href="?lang=hr" th:href="${langUrls == null ? '?lang=hr' : langUrls['hr']}" hreflang="hr" lang="hr"
 	   th:aria-current="${#locale.language == 'hr'} ? 'true'"
 	   th:title="#{lang.hr}">HR</a>
 </div>
