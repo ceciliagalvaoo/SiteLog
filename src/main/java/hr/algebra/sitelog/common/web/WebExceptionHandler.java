@@ -1,5 +1,7 @@
 package hr.algebra.sitelog.common.web;
 
+import java.sql.SQLException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.NestedExceptionUtils;
@@ -51,6 +53,9 @@ public class WebExceptionHandler {
 	/** Message of the V3 lock trigger ({@code RAISE EXCEPTION ... MESSAGE = 'daily_log_locked'}). */
 	static final String LOCK_TRIGGER_MESSAGE = "daily_log_locked";
 
+	/** SQLSTATE of the V3 lock trigger ({@code ERRCODE = 'P0001'}, PostgreSQL's raise_exception). */
+	static final String LOCK_TRIGGER_SQLSTATE = "P0001";
+
 	private static final Logger LOG = LoggerFactory.getLogger(WebExceptionHandler.class);
 
 	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
@@ -92,7 +97,7 @@ public class WebExceptionHandler {
 	public ModelAndView dataAccess(DataAccessException ex, HttpServletRequest request) throws DataAccessException {
 		Throwable root = NestedExceptionUtils.getMostSpecificCause(ex);
 		String message = root.getMessage() == null ? "" : root.getMessage();
-		if (message.contains(LOCK_TRIGGER_MESSAGE)) {
+		if (isLockTrigger(ex)) {
 			LOG.warn("Lock trigger rejected a write the service did not stop: {}", message);
 			return conflictPage(LOCKED_KEY, refererOr(request, "/sites"));
 		}
@@ -101,6 +106,22 @@ public class WebExceptionHandler {
 			return conflictPage(DATA_CONFLICT_KEY, refererOr(request, "/sites"));
 		}
 		throw ex;
+	}
+
+	/**
+	 * True when the cause chain holds the {@link SQLException} raised by the V3 lock trigger:
+	 * SQLSTATE {@code P0001} <b>and</b> the {@code daily_log_locked} message. The SQLSTATE alone is
+	 * shared by every {@code RAISE EXCEPTION} (V5 uses it for {@code audit_append_only}), the message
+	 * alone could appear in any text, so both must match.
+	 */
+	static boolean isLockTrigger(Throwable ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+			if (cause instanceof SQLException sql && LOCK_TRIGGER_SQLSTATE.equals(sql.getSQLState())
+					&& sql.getMessage() != null && sql.getMessage().contains(LOCK_TRIGGER_MESSAGE)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static ModelAndView conflictPage(String messageKey, String reloadUrl) {
