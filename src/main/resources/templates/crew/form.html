@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!--/*
+  New crew (Figma p. 41), New crew with "Name is already used" (p. 42), and edit (same template).
+  Model: crewForm (CrewForm), crewId (null = new).
+  Active toggle: an inactive crew stays on past logs but is no longer offered in the crew selects.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'crews')}">
+<head><title th:text="(${crewId == null} ? #{crew.form.new.title} : #{crew.form.edit.title}) + ' · ' + #{app.name}">New crew · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="isNew=${crewId == null}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.crews}">
+		<a th:href="@{/crews}" href="/crews" th:text="#{nav.crews}">Crews</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${isNew} ? #{crew.form.new.title} : #{crew.form.edit.title}">New crew</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{crew.list.eyebrow}">Administration</p>
+			<h1 th:text="${isNew} ? #{crew.form.new.title} : #{crew.form.edit.title}">New crew</h1>
+			<p class="lead" th:text="${isNew} ? #{crew.form.new.lead} : #{crew.form.edit.lead}">Add a contractor crew for assignment to daily work entries.</p>
+		</div>
+	</div>
+
+	<form class="form" th:object="${crewForm}" novalidate method="post"
+	      th:action="${isNew} ? @{/crews} : @{/crews/{id}(id=${crewId})}">
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', ${isNew} ? #{crew.form.error.title} : #{crew.form.error.title.edit}, #{crew.form.error.body})}"></div>
+		</th:block>
+
+		<section class="card">
+			<div class="card__header">
+				<h2 th:text="#{crew.form.card.title}">Crew details</h2>
+				<p class="card__subtitle" th:text="#{crew.form.card.subtitle}">Basic company and trade information.</p>
+			</div>
+			<div class="form-grid form-grid--2">
+				<div th:replace="~{fragments/input :: textField('name', #{crew.field.name}, 'text', null, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('company', #{crew.field.company}, 'text', #{crew.field.company.placeholder}, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('trade', #{crew.field.trade}, 'text', #{crew.field.trade.placeholder}, true)}"></div>
+				<label th:replace="~{fragments/toggle :: toggle('active', #{common.active}, #{crew.field.active.hint})}"></label>
+			</div>
+		</section>
+
+		<div class="form-actions form-actions--sticky">
+			<a class="btn btn--secondary" th:href="@{/crews}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary" th:text="${isNew} ? #{crew.form.create} : #{common.saveChanges}">Create crew</button>
+		</div>
+	</form>
+</div>
+</body>
+</html>
