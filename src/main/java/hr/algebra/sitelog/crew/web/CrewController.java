@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
 import hr.algebra.sitelog.common.exception.InvalidFieldException;
 import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.crew.service.CrewCommand;
 import hr.algebra.sitelog.crew.service.CrewService;
 
 /**
@@ -52,8 +53,9 @@ public class CrewController {
 			Model model, RedirectAttributes redirect) {
 		if (!result.hasErrors()) {
 			try {
-				crewService.create(form.toCommand());
-				Flash.success(redirect, "crew.flash.created", form.getName());
+				CrewCommand command = form.toCommand();
+				crewService.create(command);
+				Flash.success(redirect, "crew.flash.created", command.name());
 				return "redirect:/crews";
 			}
 			catch (InvalidFieldException e) {
@@ -76,8 +78,9 @@ public class CrewController {
 			BindingResult result, Model model, RedirectAttributes redirect) {
 		if (!result.hasErrors()) {
 			try {
-				crewService.update(id, form.toCommand());
-				Flash.success(redirect, "crew.flash.updated", form.getName());
+				CrewCommand command = form.toCommand();
+				crewService.update(id, command);
+				Flash.success(redirect, "crew.flash.updated", command.name());
 				return "redirect:/crews";
 			}
 			catch (InvalidFieldException e) {

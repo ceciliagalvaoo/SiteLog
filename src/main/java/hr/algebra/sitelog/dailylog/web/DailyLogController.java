@@ -87,7 +87,7 @@ public class DailyLogController {
 		if (!result.hasErrors()) {
 			try {
 				dailyLogService.create(siteId, form.toCommand());
-				Flash.success(redirect, "dailyLog.flash.saved", "dailyLog.flash.saved.detail",
+				Flash.successWithDetail(redirect, "dailyLog.flash.saved", "dailyLog.flash.saved.detail",
 						longDate(form.getLogDate(), locale));
 				return "redirect:/sites/" + siteId;
 			}

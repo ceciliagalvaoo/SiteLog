@@ -29,7 +29,13 @@ public final class Flash {
 		add(redirect, SUCCESS, titleKey, null, args);
 	}
 
-	public static void success(RedirectAttributes redirect, String titleKey, String detailKey, Object... args) {
+	/**
+	 * Success flash with an extra body message. Deliberately not an overload of
+	 * {@link #success(RedirectAttributes, String, Object...)}: with the same name, a single
+	 * {@code String} argument (e.g. a site name) would bind here as {@code detailKey}.
+	 */
+	public static void successWithDetail(RedirectAttributes redirect, String titleKey, String detailKey,
+			Object... args) {
 		add(redirect, SUCCESS, titleKey, detailKey, args);
 	}
 
