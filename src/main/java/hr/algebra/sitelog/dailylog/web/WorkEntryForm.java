@@ -39,8 +39,7 @@ public class WorkEntryForm {
 	@DateTimeFormat(iso = DateTimeFormat.ISO.TIME)
 	private LocalTime endTime;
 
-	@Valid
-	private List<CrewAssignmentForm> crewAssignments = new ArrayList<>();
+	private List<@Valid CrewAssignmentForm> crewAssignments = new ArrayList<>();
 
 	/** An empty entry with one empty crew row (what "Add work entry" shows). */
 	public static WorkEntryForm blank() {

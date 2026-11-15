@@ -18,7 +18,8 @@ import jakarta.validation.constraints.Size;
 /**
  * Backing object of {@code dailylog/form}: the log and, nested as in the prototype, its work
  * entries ({@code workEntries[i]}) each with its crew rows ({@code workEntries[i].crewAssignments[j]}).
- * {@code @Valid} cascades validation into both lists.
+ * {@code @Valid} on the element type ({@code List<@Valid WorkEntryForm>}) cascades validation into
+ * both lists; the error paths stay {@code workEntries[i].crewAssignments[j].hoursWorked}.
  *
  * <p>{@link #version} is the log version the form was loaded with (hidden field); the service
  * refuses the save when the log changed in the meantime (409).
@@ -36,9 +37,8 @@ public class DailyLogForm {
 	@Size(max = 4000, message = "{validation.size.max}")
 	private String notes;
 
-	@Valid
 	@NotEmpty(message = "{validation.dailyLog.workEntries.required}")
-	private List<WorkEntryForm> workEntries = new ArrayList<>();
+	private List<@Valid WorkEntryForm> workEntries = new ArrayList<>();
 
 	/** New log for a date, with one empty work entry and one empty crew row. */
 	public static DailyLogForm blank(LocalDate logDate) {
