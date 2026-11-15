@@ -24,6 +24,7 @@ import hr.algebra.sitelog.common.web.Pages;
 import hr.algebra.sitelog.dailylog.service.DailyLogService;
 import hr.algebra.sitelog.site.service.SiteDetails;
 import hr.algebra.sitelog.site.service.SiteService;
+import hr.algebra.sitelog.site.service.SiteStatusFilter;
 
 /**
  * Site screens: list with filter, detail (overview KPIs and the daily logs tab), New site /
@@ -57,10 +58,14 @@ public class SiteController {
 
 	@GetMapping
 	public String list(@RequestParam(name = "q", required = false) String filter,
+			@RequestParam(name = "status", required = false) String status,
 			@PageableDefault(size = 20) Pageable pageable, Model model) {
-		model.addAttribute("sites", siteService.list(filter,
+		SiteStatusFilter statusFilter = SiteStatusFilter.fromParam(status);
+		model.addAttribute("sites", siteService.list(filter, statusFilter,
 				Pages.restrict(pageable, SITE_SORT, Sort.by("name"))));
 		model.addAttribute("q", filter);
+		model.addAttribute("status", statusFilter);
+		model.addAttribute("statuses", SiteStatusFilter.values());
 		return LIST_VIEW;
 	}
 

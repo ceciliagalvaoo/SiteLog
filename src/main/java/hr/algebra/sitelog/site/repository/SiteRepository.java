@@ -1,5 +1,6 @@
 package hr.algebra.sitelog.site.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,22 @@ public interface SiteRepository extends JpaRepository<Site, Long> {
 			where lower(s.code) like lower(concat('%', :text, '%'))
 			   or lower(s.name) like lower(concat('%', :text, '%'))""")
 	Page<Site> searchWithManager(@Param("text") String text, Pageable pageable);
+
+	/**
+	 * Sites list with the "Project status" filter: {@code status} is {@code ACTIVE} (no end date,
+	 * or an end date after {@code today}) or {@code FINISHED} (end date reached); {@code text} is
+	 * the optional code / name filter ({@code ''} for none).
+	 */
+	@EntityGraph(attributePaths = "manager")
+	@Query("""
+			select s from Site s
+			where (:text = ''
+			       or lower(s.code) like lower(concat('%', :text, '%'))
+			       or lower(s.name) like lower(concat('%', :text, '%')))
+			  and ((:status = 'FINISHED' and s.endDate is not null and s.endDate <= :today)
+			       or (:status = 'ACTIVE' and (s.endDate is null or s.endDate > :today)))""")
+	Page<Site> searchByStatusWithManager(@Param("text") String text, @Param("status") String status,
+			@Param("today") LocalDate today, Pageable pageable);
 
 	/** Sites of one manager (SITE_MANAGER sees and edits only these). */
 	@EntityGraph(attributePaths = "manager")

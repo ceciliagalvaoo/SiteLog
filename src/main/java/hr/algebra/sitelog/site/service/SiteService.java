@@ -84,6 +84,22 @@ public class SiteService {
 				site.getStartDate(), site.getEndDate(), site.getManager().getFullName(), isFinished(site, today)));
 	}
 
+	/**
+	 * Sites list with the text filter and the "Project status" filter (Active / Finished).
+	 * {@link SiteStatusFilter#ALL} is the same as {@link #list(String, Pageable)}.
+	 */
+	public Page<SiteListItem> list(String filter, SiteStatusFilter status, Pageable pageable) {
+		if (status == null || status == SiteStatusFilter.ALL) {
+			return list(filter, pageable);
+		}
+		LocalDate today = LocalDate.now(clock);
+		String text = filter == null ? "" : filter.trim();
+		return sites.searchByStatusWithManager(text, status.name(), today, pageable)
+			.map(site -> new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(),
+					site.getStartDate(), site.getEndDate(), site.getManager().getFullName(),
+					isFinished(site, today)));
+	}
+
 	public SiteDetails get(Long id) {
 		Site site = sites.findWithManagerById(id).orElseThrow(() -> new NotFoundException(Site.class, id));
 		return new SiteDetails(site.getId(), site.getCode(), site.getName(), site.getAddress(),
