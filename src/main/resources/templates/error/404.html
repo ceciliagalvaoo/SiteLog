@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<!--/*
+  Error 404. Unknown URL (BasicErrorController) or a record that does not exist (WebExceptionHandler, model: errorMessage = message key).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, '')}">
+<head><title th:text="#{error.404.title} + ' · ' + #{app.name}">SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow">
+	<div th:replace="~{fragments/error-page :: errorBody(404, #{error.404.title}, (${errorMessage != null} ? #{${errorMessage}} : #{error.notFound}), null)}"></div>
+</div>
+</body>
+</html>

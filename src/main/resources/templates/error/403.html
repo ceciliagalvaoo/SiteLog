@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<!--/*
+  Error 403. Spring Security (access denied) -> /error -> this page.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, '')}">
+<head><title th:text="#{error.403.title} + ' · ' + #{app.name}">SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow">
+	<div th:replace="~{fragments/error-page :: errorBody(403, #{error.403.title}, #{error.403.body}, null)}"></div>
+</div>
+</body>
+</html>

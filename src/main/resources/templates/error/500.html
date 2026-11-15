@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<!--/*
+  Error 500. Any unhandled exception (BasicErrorController). Uses no model attribute, so it renders even when the database is down.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, '')}">
+<head><title th:text="#{error.500.title} + ' · ' + #{app.name}">SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow">
+	<div th:replace="~{fragments/error-page :: errorBody(500, #{error.500.title}, #{error.500.body}, null)}"></div>
+</div>
+</body>
+</html>

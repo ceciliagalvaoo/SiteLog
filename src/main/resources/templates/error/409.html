@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<!--/*
+  Error 409. Stale version / lock trigger / constraint (WebExceptionHandler, model: flashError = message key shown by the layout, reloadUrl).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, '')}">
+<head><title th:text="#{error.409.title} + ' · ' + #{app.name}">SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow">
+	<div th:replace="~{fragments/error-page :: errorBody(409, #{error.409.title}, #{error.409.body}, ${reloadUrl})}"></div>
+</div>
+</body>
+</html>

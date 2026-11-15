@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<!--/*
+  Fallback error page for any status without its own template (e.g. 400 bad parameter, 405 wrong
+  method). Model from BasicErrorController: status. No message or trace is ever shown.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, '')}">
+<head><title th:text="#{error.generic.title} + ' · ' + #{app.name}">SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="code=${status != null ? status : 500}">
+	<div th:replace="~{fragments/error-page :: errorBody(${code},
+	        (${code >= 500} ? #{error.500.title} : #{error.generic.title}),
+	        (${code >= 500} ? #{error.500.body} : #{error.generic.body}), null)}"></div>
+</div>
+</body>
+</html>

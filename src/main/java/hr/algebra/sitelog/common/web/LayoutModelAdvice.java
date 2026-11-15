@@ -1,6 +1,5 @@
 package hr.algebra.sitelog.common.web;
 
-import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -21,8 +20,12 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * Runs before every {@code @Controller} handler (a form re-rendered after a failed POST needs the
  * layout too). Cost: three small indexed queries on {@code notification (recipient_id, read_at)} and the
  * user lookup.
+ *
+ * <p>Limited to the application's own controllers: Spring Boot's {@code BasicErrorController}
+ * (the 403 / 404 / 500 pages) must render even when the database is the reason for the error, so
+ * the error pages never query it (the layout treats every attribute as optional).
  */
-@ControllerAdvice(annotations = Controller.class)
+@ControllerAdvice(basePackages = "hr.algebra.sitelog")
 public class LayoutModelAdvice {
 
 	private final CurrentUserProvider currentUserProvider;
