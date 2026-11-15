@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<!--/*
+  Notifications page (no frame of its own: the list of the "Notifications panel", pp. 43-44, as a
+  full page with paging). Model: page (Page<NotificationView>), unreadCount (layout advice).
+  The title follows the UI language (notification.type.<TYPE>); Open marks the notification read
+  and goes to its record (POST, PRG).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'notifications')}">
+<head><title th:text="#{notifications.title} + ' · ' + #{app.name}">Notifications · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="unread=${unreadCount != null ? unreadCount : 0}">
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{notifications.page.eyebrow}">Inbox</p>
+			<h1 th:text="#{notifications.title}">Notifications</h1>
+			<p class="lead" th:text="${unread > 0} ? #{notifications.unread(${unread})} : #{notifications.page.lead}">3 unread</p>
+		</div>
+		<form class="page-header__actions" th:if="${unread > 0}" th:action="@{/notifications/read-all}" method="post">
+			<button type="submit" class="btn btn--secondary" th:text="#{notifications.markAllRead}">Mark all as read</button>
+		</form>
+	</div>
+
+	<div class="card" th:if="${page.empty}">
+		<div class="empty-state">
+			<span class="notice-icon notice-icon--done" aria-hidden="true">
+				<svg th:replace="~{fragments/icon :: icon('check')}"></svg>
+			</span>
+			<h2 th:text="#{notifications.empty.title}">You're all caught up</h2>
+			<p class="text-muted" th:text="#{notifications.empty.body}">There are no unread in-app notifications.</p>
+		</div>
+	</div>
+
+	<ul class="notice-list" th:unless="${page.empty}">
+		<li class="notice-item" th:each="n : ${page}" th:classappend="${!n.read} ? 'notice-item--unread'"
+		    th:with="type=${'' + n.type},
+		             tone=${type == 'CORRECTIVE_ACTION_OVERDUE' ? 'overdue'
+		                  : (type == 'DAILY_LOG_UNSIGNED' ? 'unsigned'
+		                  : (type == 'REOPEN_REQUESTED' ? 'reopen' : 'severity'))},
+		             iconName=${type == 'DAILY_LOG_UNSIGNED' ? 'clock' : (type == 'REOPEN_REQUESTED' ? 'lock' : 'incidents')}">
+			<span class="notice-icon" aria-hidden="true" th:classappend="${'notice-icon--' + tone}">
+				<svg th:replace="~{fragments/icon :: iconSm(${iconName})}"></svg>
+			</span>
+			<div class="notice-item__body">
+				<h2 class="notice-item__title" th:text="#{${'notification.type.' + type}}">Daily log not signed off</h2>
+				<p class="text-muted" th:text="${n.body}">ZG-01 · log of 29 Oct 2026 is still a draft</p>
+				<p class="notice-item__meta">
+					<time th:datetime="${n.createdAt}" th:text="${#temporals.format(n.createdAt, #messages.msg('format.datetime'))}">30 Oct 2026, 07:00</time>
+					· <span th:text="${n.read} ? #{notifications.status.read} : #{notifications.status.unread}">Unread</span>
+				</p>
+			</div>
+			<div class="notice-item__actions">
+				<form th:if="${n.link != null}" th:action="@{/notifications/{id}/open(id=${n.id})}" method="post">
+					<button type="submit" class="btn btn--secondary" th:text="#{notifications.open}">Open</button>
+				</form>
+				<form th:unless="${n.read}" th:action="@{/notifications/{id}/read(id=${n.id})}" method="post">
+					<button type="submit" class="btn btn--ghost" th:text="#{notifications.markRead}">Mark as read</button>
+				</form>
+			</div>
+		</li>
+	</ul>
+
+	<nav th:replace="~{fragments/pagination :: pager(${page}, @{/notifications})}"></nav>
+</div>
+</body>
+</html>
