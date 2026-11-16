@@ -96,7 +96,14 @@ letter-spaced text is kept for eyebrows, table headers and chips.
 
 The `Components` page holds the reusable set (component sets drawn with the dashed purple
 outline in Figma), in eight numbered sections. Each one maps to a Thymeleaf fragment in
-`templates/fragments/`. Every component with text (button, form controls, table row, status
+`templates/fragments/`. The page holds **25 components**, and the library behind them defines
+68 primitive colours, 80 semantic colour tokens (`color/bg/*`, `color/text/*`, `color/border/*`,
+`color/status/<tone>/*`, `color/feedback/*`), 23 dimension tokens (spacing `space/*` and radii),
+17 text styles in Manrope and 4 effect styles (primary button shadow, error ring, modal shadow,
+focus ring). Every colour in a component is bound to a token and every text uses a text style;
+composite components (chips, table, crew block, modal) are built from instances of the base
+ones. States that the screens do not show (Focus, Disabled, switch Off, checked checkbox) are
+added to the components for hand-off and marked as such in their description. Every component with text (button, form controls, table row, status
 chips, flash messages, crew assignment row) uses **auto layout**: the button is a horizontal
 auto-layout frame with 16 px side padding and a 7 px gap, sized to *hug* its label, so a longer
 Croatian label widens the button instead of overflowing it. Icons are fixed-size vectors.
@@ -344,17 +351,23 @@ per screen, is the Figma frame → template table in the README.
 
 ## Clickable flow
 
-The whole prototype is wired in presentation mode from one starting point, **Flow 1 – Sites**
+Presentation mode starts at **Flow 1 – Sites** on the Sites list
 ([open the prototype](https://www.figma.com/proto/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=20-3626&starting-point-node-id=20%3A3626)).
-The sidebar links connect every section (Sites, Incidents, Assisted reporting, Compliance,
-Account, Administration, Notifications), the bell opens the notifications panel as an overlay,
-and the main task can be followed click by click:
+All interactions are *On click → Navigate to* (407 in total, none pointing to a missing frame).
 
-1. Sites list → site card → **Site detail**;
-2. Site detail → *Daily logs* tab → **New daily log**;
-3. Daily log form → *Save daily log* with empty fields → **form with validation errors**;
-4. corrected form → *Save daily log* → **site overview with the "Daily log saved" flash**;
-5. a row of the recent logs → **Daily log detail**.
+- **Global navigation, on every desktop screen:** the sidebar (Sites, Incidents, Assisted
+  reporting, Compliance, Users, Crews), the avatar (My profile) and the bell (notifications panel).
+- **Breadcrumbs and Cancel / × buttons** return to the previous list or detail.
+- **Main path, the daily log CRUD:** Sites list → site card → **Site detail** → *New daily log* →
+  **Daily log form** → *Save daily log* → **form with validation errors** → *Save daily log* →
+  **Daily log saved** (success flash).
+- **Other five-screen paths:** Sites list → site card → **Site detail** → *Incidents* tab →
+  *Report incident* → **Incident form (High)**; and Sites list → **Site detail** → *View all logs*
+  → **Daily logs tab** → a row → **Daily log detail (reopen pending)**.
+- **Other branches:** New site and Site settings (save or cancel back to the list), New daily log
+  from the site tabs, the incident detail from the incidents tab, and My profile → Log out → Login.
 
-Branches from the same start cover New site, Site settings (edit site), the incident and AI
-screens and the mobile frames.
+The other buttons that would change state (Sign in, Sign off, Request reopen,
+Analyse note, Report incident, New user / New crew) are not wired: their result screens are
+separate frames in the same section, shown in order in `docs/prototype.pdf`. The mobile frames
+are static.
