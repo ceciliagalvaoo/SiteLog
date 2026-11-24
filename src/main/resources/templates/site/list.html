@@ -3,19 +3,21 @@
   Sites list (Figma p. 28 "Sites - Sites list", mobile p. 12).
   Model: sites (Page<SiteListItem>), q (text filter), status (SiteStatusFilter), statuses (all values).
   The filter is a GET form: the URL keeps the filter, the back button and links work without JS.
+  Roles: every signed-in user reads the list; "New site" (button and empty-state action) only for
+  ADMIN. Hiding is cosmetic - SiteService has @PreAuthorize("hasRole('ADMIN')") on create.
 */-->
-<html xmlns:th="http://www.thymeleaf.org"
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
 <head><title th:text="#{site.list.title} + ' · ' + #{app.name}">Sites · SiteLog</title></head>
 <body>
-<div id="content" class="stack">
+<div id="content" class="stack" th:with="isAdmin=${#authorization.expression('hasRole(''ADMIN'')')}">
 	<div class="page-header">
 		<div class="page-header__text">
 			<p class="eyebrow" th:text="#{site.list.eyebrow}">Project portfolio</p>
 			<h1 th:text="#{site.list.title}">Sites</h1>
 			<p class="lead" th:text="#{site.list.lead}">Monitor active projects, daily reporting and safety at a glance.</p>
 		</div>
-		<div class="page-header__actions">
+		<div class="page-header__actions" sec:authorize="hasRole('ADMIN')">
 			<a class="btn btn--primary" th:href="@{/sites/new}" href="/sites/new">
 				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
 				<span th:text="#{site.list.new}">New site</span>
@@ -73,7 +75,7 @@
 			<div th:replace="~{fragments/table-row :: emptyState(#{site.list.noResults.title}, #{site.list.noResults.body}, #{common.clearFilter}, @{/sites})}"></div>
 		</div>
 		<div class="card" th:if="${sites.empty and !filtered}">
-			<div th:replace="~{fragments/table-row :: emptyState(#{site.list.empty.title}, #{site.list.empty.body}, #{site.list.new}, @{/sites/new})}"></div>
+			<div th:replace="~{fragments/table-row :: emptyState(#{site.list.empty.title}, #{site.list.empty.body}, ${isAdmin} ? #{site.list.new} : null, @{/sites/new})}"></div>
 		</div>
 	</th:block>
 

@@ -6,13 +6,18 @@
   Model: site (SiteDetails with the KPIs), tab, logs (Page<DailyLogSummary>), contextTitle.
   Delete: confirmation modal (no frame - built from the Modal component); when the site holds
   records the modal explains why it cannot be deleted instead of offering the button.
+  Roles (hiding is cosmetic, the services enforce the same rules with @PreAuthorize):
+  - Site settings / Delete site: ADMIN.
+  - New daily log (header and empty states): the SITE_MANAGER of this site (canManage).
+  - everyone signed in: read the tabs.
 */-->
-<html xmlns:th="http://www.thymeleaf.org"
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
 <head><title th:text="${site.name} + ' · ' + #{app.name}">Residential Complex Lanište · SiteLog</title></head>
 <body>
 <div id="content" class="stack"
-     th:with="dateFmt=#{format.date}, hasRecords=${site.dailyLogCount > 0 or site.openIncidentCount > 0}">
+     th:with="dateFmt=#{format.date}, hasRecords=${site.dailyLogCount > 0 or site.openIncidentCount > 0},
+              canManage=${#authorization.expression('hasRole(''SITE_MANAGER'')') and @siteAccess.canManageSite(site.id)}">
 	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
 		<a th:href="@{/sites}" href="/sites" th:text="#{nav.sites}">Sites</a>
 		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
@@ -26,9 +31,11 @@
 			<p class="lead" th:text="${tab == 'logs'} ? #{site.detail.logs.lead} : ${site.address}">Lanište 12, 10000 Zagreb</p>
 		</div>
 		<div class="page-header__actions">
-			<button type="button" class="btn btn--ghost" data-modal-open="delete-site" th:text="#{site.detail.delete}">Delete site</button>
-			<a class="btn btn--secondary" th:href="@{/sites/{id}/edit(id=${site.id})}" th:text="#{site.detail.settings}">Site settings</a>
-			<a class="btn btn--primary" th:href="@{/sites/{id}/daily-logs/new(id=${site.id})}">
+			<th:block sec:authorize="hasRole('ADMIN')">
+				<button type="button" class="btn btn--ghost" data-modal-open="delete-site" th:text="#{site.detail.delete}">Delete site</button>
+				<a class="btn btn--secondary" th:href="@{/sites/{id}/edit(id=${site.id})}" th:text="#{site.detail.settings}">Site settings</a>
+			</th:block>
+			<a class="btn btn--primary" th:if="${canManage}" th:href="@{/sites/{id}/daily-logs/new(id=${site.id})}">
 				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
 				<span th:text="#{dailyLog.new}">New daily log</span>
 			</a>
@@ -85,7 +92,7 @@
 				   th:text="#{site.recent.viewAll}">View all logs</a>
 			</div>
 			<th:block th:if="${logs.empty}">
-				<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, #{dailyLog.new}, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
+				<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, ${canManage} ? #{dailyLog.new} : null, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
 			</th:block>
 			<div class="table-wrap table-wrap--flush" th:unless="${logs.empty}">
 				<table th:replace="~{site/detail :: logTable(${#lists.size(logs.content) > 5 ? logs.content.subList(0, 5) : logs.content})}"></table>
@@ -111,7 +118,7 @@
 	<!-- ============================================================ daily logs -->
 	<th:block th:if="${tab == 'logs'}">
 		<div class="card" th:if="${logs.empty}">
-			<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, #{dailyLog.new}, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
+			<div th:replace="~{fragments/table-row :: emptyState(#{dailyLog.empty.title}, #{dailyLog.empty.body}, ${canManage} ? #{dailyLog.new} : null, @{/sites/{id}/daily-logs/new(id=${site.id})})}"></div>
 		</div>
 		<div class="table-wrap" th:unless="${logs.empty}">
 			<table th:replace="~{site/detail :: logTable(${logs.content})}"></table>
@@ -127,7 +134,8 @@
 		<div th:replace="~{fragments/table-row :: emptyState(#{site.compliance.title(${site.openCorrectiveActionCount})}, #{site.compliance.body}, null, null)}"></div>
 	</div>
 
-	<!-- ============================================================ delete confirmation -->
+	<!-- ============================================================ delete confirmation (ADMIN) -->
+	<th:block sec:authorize="hasRole('ADMIN')">
 	<dialog th:replace="~{fragments/modal :: confirm('delete-site', ${site.code},
 	         ${hasRecords} ? #{site.delete.blocked.title} : #{site.delete.title},
 	         ${hasRecords} ? #{site.flash.deleteBlocked} : #{site.delete.subtitle}, ~{site/detail :: #delete-site-body})}">
@@ -142,6 +150,7 @@
 			</form>
 		</div>
 	</dialog>
+	</th:block>
 </div>
 
 <!--/* Daily logs table: the full list (logs tab) and the 5 newest (overview). Mobile: stacked cards (p. 13). */-->

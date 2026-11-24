@@ -7,13 +7,17 @@
     edit / remove, Add work entry, Add crew. Delete only when log.deletable (a Draft without links).
   - Signed off: read-only, lock notice, no editing control at all (AR1).
   Every POST carries the version shown on this page (optimistic locking -> 409 page when stale).
+  Roles: every signed-in user reads the log; the editing controls (edit, sign off, delete, work
+  entries, crew rows) need canEdit = the SITE_MANAGER of the log's site (hasRole + @siteAccess)
+  AND an editable log. Hiding is cosmetic: the services check the same rule with @PreAuthorize.
 */-->
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
 <head><title th:text="${#temporals.format(log.logDate, #messages.msg('format.date'))} + ' · ' + ${log.siteName} + ' · ' + #{app.name}">29 Oct 2026 · SiteLog</title></head>
 <body>
 <div id="content" class="stack"
-     th:with="dateFmt=#{format.date}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))}">
+     th:with="dateFmt=#{format.date}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))},
+              canEdit=${log.editable and #authorization.expression('hasRole(''SITE_MANAGER'')') and @siteAccess.canManageLog(log.id)}">
 	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
 		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
 		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
@@ -31,7 +35,7 @@
 		</div>
 		<div class="page-header__actions page-header__actions--center">
 			<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
-			<th:block th:if="${log.editable}">
+			<th:block th:if="${canEdit}">
 				<button type="button" class="btn btn--ghost" th:if="${log.deletable}" data-modal-open="delete-log"
 				        th:text="#{dailyLog.detail.delete}">Delete log</button>
 				<a class="btn btn--secondary" th:href="@{/daily-logs/{id}/edit(id=${log.id})}" th:text="#{dailyLog.detail.edit}">Edit log</a>
@@ -54,7 +58,7 @@
 	<th:block th:if="${log.status.name() == 'REOPENED'}">
 		<div th:replace="~{fragments/flash :: flash('info', #{dailyLog.detail.reopened.title}, #{dailyLog.detail.reopened.body})}"></div>
 	</th:block>
-	<p class="text-muted" id="sign-off-hint" th:if="${log.editable and !log.canSignOff()}" th:text="#{dailyLog.flash.signOffEmpty}">Add at least one work entry before signing off.</p>
+	<p class="text-muted" id="sign-off-hint" th:if="${canEdit and !log.canSignOff()}" th:text="#{dailyLog.flash.signOffEmpty}">Add at least one work entry before signing off.</p>
 
 	<section class="card">
 		<div class="card__header">
@@ -83,7 +87,7 @@
 				<p class="eyebrow" th:text="#{dailyLog.detail.work.eyebrow}">Work completed</p>
 				<h2 th:text="#{dailyLog.detail.work.count(${#lists.size(log.workEntries)})}">2 work entries</h2>
 			</div>
-			<a class="btn btn--secondary" th:if="${log.editable}" th:href="@{/daily-logs/{id}/work-entries/new(id=${log.id})}">
+			<a class="btn btn--secondary" th:if="${canEdit}" th:href="@{/daily-logs/{id}/work-entries/new(id=${log.id})}">
 				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
 				<span th:text="#{dailyLog.form.addEntry}">Add work entry</span>
 			</a>
@@ -101,7 +105,7 @@
 						    th:if="${entry.startTime != null}" th:text="${#temporals.format(entry.startTime, #messages.msg('format.time'))} + (${entry.endTime != null} ? '–' + ${#temporals.format(entry.endTime, #messages.msg('format.time'))} : '')">07:00–15:00</th:block>
 					</p>
 				</div>
-				<div class="entry-view__actions" th:if="${log.editable}">
+				<div class="entry-view__actions" th:if="${canEdit}">
 					<a class="btn btn--ghost" th:href="@{/daily-logs/{l}/work-entries/{w}/edit(l=${log.id}, w=${entry.id})}" th:text="#{workEntry.edit}">Edit entry</a>
 					<form th:action="@{/daily-logs/{l}/work-entries/{w}/delete(l=${log.id}, w=${entry.id})}" method="post">
 						<input type="hidden" name="logVersion" th:value="${log.version}">
@@ -116,7 +120,7 @@
 					<span th:text="#{dailyLog.detail.hours(${#numbers.formatDecimal(row.hoursWorked, 1, 'DEFAULT', 1, 'DEFAULT')})}">8.0 hrs</span>
 					<span th:text="#{dailyLog.detail.workers(${row.workerCount})}">6 workers</span>
 					<span class="crew-line__task" th:text="${row.task}">Formwork panels</span>
-					<span class="crew-line__actions" th:if="${log.editable}">
+					<span class="crew-line__actions" th:if="${canEdit}">
 						<a class="link-button" th:href="@{/daily-logs/{l}/crew-assignments/{c}/edit(l=${log.id}, c=${row.id})}"
 						   th:text="#{common.edit}" th:title="#{dailyLog.detail.editCrew}">Edit</a>
 						<form th:action="@{/daily-logs/{l}/crew-assignments/{c}/delete(l=${log.id}, c=${row.id})}" method="post">
@@ -128,7 +132,7 @@
 				</li>
 				<li class="crew-line crew-line--empty text-muted" th:if="${#lists.isEmpty(entry.crewAssignments)}" th:text="#{crewAssignment.none}">No crew assigned yet.</li>
 			</ul>
-			<div class="entry-view__foot" th:if="${log.editable}">
+			<div class="entry-view__foot" th:if="${canEdit}">
 				<a class="link-button link-button--success" th:href="@{/daily-logs/{l}/work-entries/{w}/crew-assignments/new(l=${log.id}, w=${entry.id})}">
 					+ <span th:text="#{dailyLog.detail.addCrew}">Add crew</span>
 				</a>
@@ -136,7 +140,7 @@
 		</article>
 	</section>
 
-	<th:block th:if="${log.editable}">
+	<th:block th:if="${canEdit}">
 		<dialog th:replace="~{fragments/modal :: confirm('sign-off-log', ${day}, #{dailyLog.signOff.title}, #{dailyLog.signOff.subtitle}, ~{dailylog/detail :: #sign-off-form})}">
 			<form id="sign-off-form" class="form-actions" th:action="@{/daily-logs/{id}/sign-off(id=${log.id})}" method="post">
 				<input type="hidden" name="version" th:value="${log.version}">
@@ -145,7 +149,7 @@
 			</form>
 		</dialog>
 	</th:block>
-	<th:block th:if="${log.deletable}">
+	<th:block th:if="${canEdit and log.deletable}">
 		<dialog th:replace="~{fragments/modal :: confirm('delete-log', ${day}, #{dailyLog.delete.title}, #{dailyLog.delete.subtitle}, ~{dailylog/detail :: #delete-log-form})}">
 			<form id="delete-log-form" class="form-actions" th:action="@{/daily-logs/{id}/delete(id=${log.id})}" method="post">
 				<input type="hidden" name="version" th:value="${log.version}">

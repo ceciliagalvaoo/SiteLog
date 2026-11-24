@@ -3,19 +3,22 @@
   Crews list (Figma p. 40, Admin). Model: crews (List<CrewView>).
   Delete is confirmed in a modal (one per row, no frame - built from the Modal component); a crew
   in use is refused by the service and the flash suggests deactivating it instead.
+  Roles: the menu shows Crews only to the ADMIN, but the page is readable by every signed-in
+  user (crews are chosen on daily logs); New / Edit / Delete and the name link to the edit form
+  are ADMIN-only (CrewService has @PreAuthorize("hasRole('ADMIN')") on every change).
 */-->
-<html xmlns:th="http://www.thymeleaf.org"
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'crews')}">
 <head><title th:text="#{crew.list.title} + ' · ' + #{app.name}">Crews · SiteLog</title></head>
 <body>
-<div id="content" class="stack">
+<div id="content" class="stack" th:with="isAdmin=${#authorization.expression('hasRole(''ADMIN'')')}">
 	<div class="page-header">
 		<div class="page-header__text">
 			<p class="eyebrow" th:text="#{crew.list.eyebrow}">Administration</p>
 			<h1 th:text="#{crew.list.title}">Crews</h1>
 			<p class="lead" th:text="#{crew.list.lead}">Manage contractors, trades and active site teams.</p>
 		</div>
-		<div class="page-header__actions">
+		<div class="page-header__actions" sec:authorize="hasRole('ADMIN')">
 			<a class="btn btn--primary" th:href="@{/crews/new}" href="/crews/new">
 				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
 				<span th:text="#{crew.list.new}">New crew</span>
@@ -24,20 +27,21 @@
 	</div>
 
 	<div class="card" th:if="${#lists.isEmpty(crews)}">
-		<div th:replace="~{fragments/table-row :: emptyState(#{crew.list.empty.title}, #{crew.list.empty.body}, #{crew.list.new}, @{/crews/new})}"></div>
+		<div th:replace="~{fragments/table-row :: emptyState(#{crew.list.empty.title}, #{crew.list.empty.body}, ${isAdmin} ? #{crew.list.new} : null, @{/crews/new})}"></div>
 	</div>
 
 	<div class="table-wrap" th:unless="${#lists.isEmpty(crews)}">
 		<table class="table table--stack">
 			<caption class="visually-hidden" th:text="#{crew.list.title}">Crews</caption>
-			<thead th:replace="~{fragments/table-row :: header(${ {'crew.field.name', 'crew.field.company', 'crew.field.trade', 'common.active', ''} })}"></thead>
+			<thead th:replace="~{fragments/table-row :: header(${isAdmin ? {'crew.field.name', 'crew.field.company', 'crew.field.trade', 'common.active', ''} : {'crew.field.name', 'crew.field.company', 'crew.field.trade', 'common.active'} })}"></thead>
 			<tbody>
 				<tr th:each="crew : ${crews}">
-					<td th:replace="~{fragments/table-row :: linkCell(#{crew.field.name}, ${crew.name}, @{/crews/{id}/edit(id=${crew.id})})}"></td>
+					<th:block th:if="${isAdmin}"><td th:replace="~{fragments/table-row :: linkCell(#{crew.field.name}, ${crew.name}, @{/crews/{id}/edit(id=${crew.id})})}"></td></th:block>
+					<th:block th:unless="${isAdmin}"><td th:replace="~{fragments/table-row :: cell(#{crew.field.name}, ${crew.name}, 'strong')}"></td></th:block>
 					<td th:replace="~{fragments/table-row :: cell(#{crew.field.company}, ${crew.company}, null)}"></td>
 					<td th:replace="~{fragments/table-row :: cell(#{crew.field.trade}, ${crew.trade}, null)}"></td>
 					<td th:replace="~{fragments/table-row :: chipCell(#{common.active}, 'user', ${crew.active} ? 'ACTIVE' : 'INACTIVE')}"></td>
-					<td class="cell--actions" th:attr="data-label=#{common.actions}">
+					<td class="cell--actions" th:if="${isAdmin}" th:attr="data-label=#{common.actions}">
 						<a class="btn btn--ghost" th:href="@{/crews/{id}/edit(id=${crew.id})}"
 						   th:attr="aria-label=#{crew.edit.label(${crew.name})}" th:text="#{common.edit}">Edit</a>
 						<button type="button" class="btn btn--ghost btn--ghost-danger" th:attr="data-modal-open=${'delete-crew-' + crew.id}, aria-label=#{crew.delete.label(${crew.name})}"
@@ -48,7 +52,7 @@
 		</table>
 	</div>
 
-	<th:block th:each="crew : ${crews}">
+	<th:block th:each="crew : ${crews}" th:if="${isAdmin}">
 		<dialog th:replace="~{fragments/modal :: confirm(${'delete-crew-' + crew.id}, ${crew.company}, #{crew.delete.title(${crew.name})}, #{crew.delete.subtitle}, ~{crew/list :: .delete-crew-form})}">
 			<form class="form-actions delete-crew-form" th:action="@{/crews/{id}/delete(id=${crew.id})}" method="post">
 				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>

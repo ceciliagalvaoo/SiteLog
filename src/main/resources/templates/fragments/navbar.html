@@ -93,7 +93,7 @@
 		<svg th:replace="~{fragments/icon :: icon('more')}"></svg>
 	</summary>
 	<div class="user-menu__panel">
-		<a class="menu-item" th:href="@{/account/profile}" href="/account/profile">
+		<a class="menu-item" th:href="@{/profile}" href="/profile">
 			<svg th:replace="~{fragments/icon :: icon('user')}"></svg>
 			<span th:text="#{user.profile}">View profile</span>
 		</a>
@@ -140,7 +140,7 @@
 	</a>
 	<span class="mobile-header__context" th:text="${contextTitle}">Riverside Tower</span>
 	<details th:replace="~{fragments/notifications :: bell}"></details>
-	<a class="avatar" sec:authorize="isAuthenticated()" th:href="@{/account/profile}" href="/account/profile"
+	<a class="avatar" sec:authorize="isAuthenticated()" th:href="@{/profile}" href="/profile"
 	   th:aria-label="#{user.profile}"
 	   th:text="${currentUser != null ? currentUser.initials : #strings.toUpperCase(#strings.substring(#authentication.name, 0, 1))}">AM</a>
 </header>

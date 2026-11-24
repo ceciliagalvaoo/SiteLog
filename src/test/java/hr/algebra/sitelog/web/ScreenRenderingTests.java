@@ -3,6 +3,7 @@ package hr.algebra.sitelog.web;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -25,7 +26,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.test.context.support.WithAnonymousUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,16 +39,26 @@ import hr.algebra.sitelog.TestcontainersConfiguration;
  * Renders every screen of the daily log aggregate with the seed data, in English and Croatian:
  * status 200, no template or expression error, the texts of the prototype on the page. Also the
  * states the prototype draws: empty list, validation errors, locked log, blocked delete.
+ *
+ * <p>Requests run as the seed site manager of ZG-01 / ZG-02 ({@code @WithUserDetails}, loaded by
+ * the real {@code AppUserDetailsService}); the Admin-only pages and actions run as the seed admin.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser
+@WithUserDetails(ScreenRenderingTests.MANAGER)
 @Transactional
 class ScreenRenderingTests {
 
+	static final String MANAGER = "manager@sitelog.test";
+
+	static final String ADMIN = "admin@sitelog.test";
+
 	@Autowired
 	MockMvc mvc;
+
+	@Autowired
+	UserDetailsService userDetailsService;
 
 	@Autowired
 	JdbcTemplate jdbc;
@@ -70,35 +83,78 @@ class ScreenRenderingTests {
 		long draft = logId("ZG-01", "2026-10-29");
 		long entry = id("select min(id) from work_entry where daily_log_id = " + draft);
 		long assignment = id("select min(id) from crew_assignment where work_entry_id = " + entry);
-		long crew = id("select id from crew where name = 'Kovač Formwork'");
 		return List.of("/sites", "/sites?status=ACTIVE", "/sites?status=FINISHED", "/sites?q=nothing-matches",
 				"/sites/" + zg01, "/sites/" + zg01 + "?tab=logs", "/sites/" + zg01 + "?tab=incidents",
-				"/sites/" + zg01 + "?tab=compliance", "/sites/new", "/sites/" + zg01 + "/edit",
-				"/sites/" + zg01 + "/daily-logs/new", "/daily-logs/" + signed, "/daily-logs/" + reopened,
+				"/sites/" + zg01 + "?tab=compliance", "/sites/" + zg01 + "/daily-logs/new", "/daily-logs/" + signed, "/daily-logs/" + reopened,
 				"/daily-logs/" + draft, "/daily-logs/" + draft + "/edit", "/daily-logs/" + draft + "/work-entries/new",
 				"/daily-logs/" + draft + "/work-entries/" + entry + "/edit",
 				"/daily-logs/" + draft + "/work-entries/" + entry + "/crew-assignments/new",
-				"/daily-logs/" + draft + "/crew-assignments/" + assignment + "/edit", "/crews", "/crews/new",
-				"/crews/" + crew + "/edit", "/notifications");
+				"/daily-logs/" + draft + "/crew-assignments/" + assignment + "/edit", "/crews", "/notifications");
+	}
+
+	/** Pages only the Admin may open (site and crew forms). */
+	private List<String> adminPages() {
+		long zg01 = siteId("ZG-01");
+		long crew = id("select id from crew where name = 'Kovač Formwork'");
+		return List.of("/sites/new", "/sites/" + zg01 + "/edit", "/crews/new", "/crews/" + crew + "/edit");
 	}
 
 	@ParameterizedTest
 	@ValueSource(strings = { "en", "hr" })
 	void everyScreenRendersInBothLanguages(String lang) throws Exception {
 		for (String page : pages()) {
-			MvcResult result = mvc.perform(get(page).cookie(new Cookie("lang", lang)))
-				.andExpect(status().isOk())
-				.andReturn();
-			String html = result.getResponse().getContentAsString();
-			// a missing key renders as ??key_locale??
-			if (html.contains("??")) {
-				throw new AssertionError("Missing message key on " + page + " (" + lang + "): "
-						+ html.substring(html.indexOf("??"), Math.min(html.length(), html.indexOf("??") + 80)));
-			}
+			assertRendersWithoutMissingKeys(page, lang, MANAGER);
+		}
+		for (String page : adminPages()) {
+			assertRendersWithoutMissingKeys(page, lang, ADMIN);
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "en", "hr" })
+	@WithAnonymousUser
+	void loginPageRendersInBothLanguages(String lang) throws Exception {
+		MvcResult result = mvc.perform(get("/login").param("error", "").cookie(new Cookie("lang", lang)))
+			.andExpect(status().isOk())
+			.andReturn();
+		if (result.getResponse().getContentAsString().contains("??")) {
+			throw new AssertionError("Missing message key on /login (" + lang + ")");
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "en", "hr" })
+	@WithAnonymousUser
+	void loginPageFollowsThePrototypeInBothLanguages(String lang) throws Exception {
+		boolean en = "en".equals(lang);
+		mvc.perform(get("/login").param("logout", "").cookie(new Cookie("lang", lang)))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString(en ? "Sign in to SiteLog" : "Prijava u SiteLog")))
+			.andExpect(content().string(containsString(en ? "Every shift." : "Svaka smjena.")))
+			.andExpect(content().string(containsString(en ? "You have been signed out" : "Odjavljeni ste")))
+			.andExpect(content().string(containsString("name=\"_csrf\"")))
+			.andExpect(content().string(containsString("name=\"email\"")))
+			.andExpect(content().string(containsString("name=\"password\"")))
+			// anonymous page: no navigation, no user menu
+			.andExpect(content().string(not(containsString("class=\"sidebar\""))))
+			.andExpect(content().string(not(containsString("action=\"/logout\""))));
+	}
+
+	private void assertRendersWithoutMissingKeys(String page, String lang, String email) throws Exception {
+		MvcResult result = mvc.perform(get(page).cookie(new Cookie("lang", lang))
+				.with(user(userDetailsService.loadUserByUsername(email))))
+			.andExpect(status().isOk())
+			.andReturn();
+		String html = result.getResponse().getContentAsString();
+		// a missing key renders as ??key_locale??
+		if (html.contains("??")) {
+			throw new AssertionError("Missing message key on " + page + " (" + lang + "): "
+					+ html.substring(html.indexOf("??"), Math.min(html.length(), html.indexOf("??") + 80)));
 		}
 	}
 
 	@Test
+	@WithUserDetails(ADMIN) // "New site" and "Delete site" are Admin actions
 	void croatianIsUsedWhenChosen() throws Exception {
 		mvc.perform(get("/sites").cookie(new Cookie("lang", "hr")))
 			.andExpect(content().string(containsString("Novo gradilište")))
@@ -140,6 +196,7 @@ class ScreenRenderingTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN) // "New site" and "Delete site" are Admin actions
 	void siteWithRecordsExplainsWhyItCannotBeDeleted() throws Exception {
 		mvc.perform(get("/sites/{id}", siteId("ZG-01")))
 			.andExpect(content().string(containsString("This site cannot be deleted")))
@@ -147,6 +204,7 @@ class ScreenRenderingTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN)
 	void newSiteHasTheEmptyDailyLogState() throws Exception {
 		long manager = id("select id from app_user where email = 'manager@sitelog.test'");
 		MvcResult created = mvc.perform(post("/sites").with(csrf())
@@ -228,6 +286,7 @@ class ScreenRenderingTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN)
 	void duplicateCrewNameIsShownOnTheField() throws Exception {
 		mvc.perform(post("/crews").with(csrf())
 				.param("name", "Kovač Formwork").param("company", "X d.o.o.").param("trade", "Formwork"))
