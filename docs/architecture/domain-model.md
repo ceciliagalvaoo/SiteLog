@@ -6,7 +6,7 @@ description: Entities, relations, business rules, delete rules, roles and state 
 
 # Domain model
 
-:::info Status (2026-11-15, milestone M2)
+:::info Status (2026-11-24, milestone M3 week 9)
 Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2 (Flyway
 `V2`–`V6`) and the JPA entities map them (M2). The diagrams below were checked against the
 migrations and the entity classes on 2026-11-15. This page is the logical model; the physical
@@ -360,6 +360,8 @@ place since M2 (`@Audited` on the aggregate, revision entity `AuditRevision` wit
 
 ## Roles and capabilities
 
+Target capabilities of each role (the full scope, including workflows built later in M3):
+
 | Role | Can | Cannot |
 |---|---|---|
 | `ADMIN` | Manage sites, crews and users. | Sign off logs or incidents. |
@@ -368,9 +370,53 @@ place since M2 (`@Audited` on the aggregate, revision entity `AuditRevision` wit
 | `INSPECTOR` | Read logs and incidents; view the compliance report. | Any write operation. |
 
 Authorization is enforced on service methods (`@PreAuthorize`), and the Thymeleaf security
-dialect hides actions the current user cannot perform. Both arrive in M3 with real login; in M2
-the services act as one configured seed user (`sitelog.current-user.email`,
-`ConfiguredCurrentUserProvider`).
+dialect hides actions the current user cannot perform. Hiding is cosmetic; the service check is
+the rule. How the checks are wired: [Architecture overview — Security](./overview.md#8-security).
+
+### Permissions implemented today
+
+:::note Provisional
+The rules marked *provisional* follow the role descriptions above where those are explicit and
+take the restrictive choice where they are not. They are to be confirmed in week 10, before the
+reopen and incident workflows add their own permissions.
+:::
+
+State after M3 week 9. "Own site" means `site.manager_id` is the signed-in user (checked by
+`SiteAccess`). **Read** = list and detail pages and the read methods of the services, which
+require only a signed-in user.
+
+| Operation | `ADMIN` | `SITE_MANAGER` | `SAFETY_SUPERVISOR` | `INSPECTOR` |
+|---|---|---|---|---|
+| Read sites, daily logs, work entries, crew rows, crews | yes | yes, every site *(provisional)* | yes | yes |
+| Create, edit, delete a site; choose its manager | yes | no | no | no |
+| Create, edit, deactivate, delete a crew | yes | no | no | no |
+| Create, edit, delete a daily log (draft or reopened); open the *New daily log* form | no *(provisional)* | own sites only *(provisional)* | no *(provisional)* | no |
+| Add, edit, remove work entries and crew rows | no | own sites only | no | no |
+| Sign off a daily log | no | own sites only | no | no |
+| List, create and edit users; activate / deactivate; assign sites | yes | no | no | no |
+| Own profile: name, preferred language, password | yes | yes | yes | yes |
+| Own notifications: read, mark as read | yes | yes | yes | yes |
+
+Reopen requests and approval, incidents, corrective actions, AI drafts and the compliance report
+get their rules when those features are built (M3–M4), following the target table above.
+
+A refused call throws `AccessDeniedException` before the method body runs; the screen answers
+with the 403 page. An id that does not exist answers 404, not 403 (`SiteAccess` lets the call
+through and the service throws its not-found exception). `RoleAccessMatrixTests` calls
+representative endpoints of these rows (pages, and POSTs with a valid CSRF token and body) as each of the five demo
+users and anonymously, and expects success for the allowed users and 403 for everyone else.
+
+### User accounts
+
+| Rule | Where it is checked |
+|---|---|
+| The login is the e-mail, unique ignoring case. | `AppUserDetailsService` (case-insensitive lookup), `UserService` (field error on *E-mail*); `uk_app_user_email` + `ck_app_user_email_lower` (stored lower-case). |
+| An inactive user cannot sign in. The login page shows the same message as for a wrong password, so it does not reveal which e-mails exist. | `AppUserPrincipal.isEnabled()` → Spring Security's authentication provider. |
+| Users are never deleted, only deactivated: daily logs, incidents and audit rows point to them. *(provisional)* | `UserService` has no delete operation. |
+| An admin cannot deactivate their own account or change their own role. | `UserService.update` / `setActive`. |
+| Every site has exactly one manager, an active `SITE_MANAGER`. A site leaves a manager only by being assigned to another one, so a user who still manages sites keeps the `SITE_MANAGER` role. | `UserService.assignSites` and `update`, `SiteService`; `site.manager_id NOT NULL`. |
+| Password: at least 12 characters and at most 72 bytes (BCrypt uses only the first 72 bytes). A change needs the current password and a matching confirmation, and must differ from the current one. Stored only as a BCrypt hash. | `PasswordPolicy` (service, also for the future API), `@PasswordLength` on the forms (one message per field). |
+| The preferred language (`en` / `hr`) becomes the UI language at login. | `PreferredLanguageLoginSuccessHandler` (`lang` cookie). |
 
 ## State machines
 

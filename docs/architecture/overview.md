@@ -6,13 +6,15 @@ description: System context, containers, components, layering rules, profiles, r
 
 # Architecture overview
 
-:::info Status (2026-11-15, milestone M2)
-**Implemented** today: the M1 skeleton (`SiteLogApplication`, temporary `SecurityConfig`,
-Flyway, `ddl-auto=validate`, `open-in-view=false`, the `dev` profile, Testcontainers tests) and,
-from M2, the database (migrations `V2`–`V6`), the JPA entities with the Envers mapping, the
-services and the Thymeleaf screens for sites, crews, daily logs (with work entries and crew
-rows), notifications and the error pages, in English and Croatian. Everything marked M3/M4 on
-this page is **planned**. The domain is described in the [domain model](./domain-model.md);
+:::info Status (2026-11-24, milestone M3 week 9)
+**Implemented** today: the M1 skeleton (Flyway, `ddl-auto=validate`, `open-in-view=false`, the
+`dev` profile, Testcontainers tests); from M2, the database (migrations `V2`–`V6`), the JPA
+entities with the Envers mapping, the services and the Thymeleaf screens for sites, crews, daily
+logs (with work entries and crew rows), notifications and the error pages, in English and
+Croatian; from M3 week 9, login with the four roles and method-level authorization
+([section 8](#8-security)), user administration and password change, and the deployment setup
+(`prod` profile, Dockerfile, Render Blueprint; [section 9](#9-deployment)). Everything else
+marked M3/M4 on this page is **planned**. The domain is described in the [domain model](./domain-model.md);
 persistence choices in [ADR-0001](../adr/0001-persistence-model.md); the reopen audit trail in
 [ADR-0003](../adr/0003-reopen-audit-trail.md); the physical schema in
 [Database schema](./database.md).
@@ -47,8 +49,8 @@ flowchart TB
 
 | Element | Status |
 |---|---|
-| Four roles | Planned for M3 (Spring Security with real users). Today: one generated default user for the login, and the services act as the seed user `manager@sitelog.test` (`sitelog.current-user.email`). |
-| Supabase PostgreSQL | Chosen in M1 ([ADR-0001](../adr/0001-persistence-model.md)); first deployment in M3. |
+| Four roles | Implemented (M3 week 9): form login with the users of `app_user`, one role each ([section 8](#8-security)). |
+| Supabase PostgreSQL | Chosen in M1 ([ADR-0001](../adr/0001-persistence-model.md)); `prod` profile ready, first deployment in M3 ([section 9](#9-deployment)). |
 | Anthropic API | Chosen in M1; AI feature in M3 (ADR-0002). Called only when profile `ai` is active. |
 | GitHub Pages | Implemented: `docs.yml` publishes this site. It is not the application deployment. |
 
@@ -86,15 +88,15 @@ flowchart LR
 
 | Container | Technology | Status |
 |---|---|---|
-| SiteLog application | Spring Boot 4.1 jar in a Docker image on Render | Skeleton runs locally (M1). Dockerfile and Render deployment: M3. |
-| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V6` ([Database schema](./database.md)). Supabase: M3. |
+| SiteLog application | Spring Boot 4.1 jar in a Docker image on Render | Multi-stage `Dockerfile` and `render.yaml` implemented (M3 week 9); runs locally with `docker compose up`. First deployment on Render: M3. |
+| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V6` ([Database schema](./database.md)). Supabase: connection settings in `application-prod.yml`, first deployment M3. |
 | AI provider | Anthropic Claude through Spring AI 2.x | M3. |
 | CI | GitHub Actions `ci.yml` (`./mvnw verify`), `docs.yml` (this site) | Implemented (M1). |
 
 ## 3. Components (inside the application)
 
 Base package `hr.algebra.sitelog`, split **by feature**, each feature split **by layer**
-(`domain`, `repository`, `service`, `web`). The diagram shows the packages that exist in M2
+(`domain`, `repository`, `service`, `web`). The diagram shows the packages that exist today
 (solid) and the ones planned for M3–M4 (dashed).
 
 ```mermaid
@@ -112,17 +114,17 @@ flowchart TB
     end
 
     subgraph features["other features (same layers)"]
-        site["site<br/>CRUD, Active/Finished filter"]
+        site["site<br/>CRUD, Active/Finished filter,<br/>SiteAccess (own-site rule)"]
         crew["crew<br/>CRUD, deactivate"]
         notification["notification<br/>bell, list, mark as read"]
         incident["incident<br/>entities, repositories,<br/>IncidentStatsService"]
-        user["user<br/>AppUser, Role,<br/>CurrentUserProvider"]
+        user["user<br/>AppUser, Role, UserService,<br/>security: login, web: profile, users"]
     end
 
     subgraph common["common + config"]
         c_web["common.web<br/>WebExceptionHandler, LayoutModelAdvice,<br/>Flash, SafeRedirects, Pages"]
         c_other["common.exception / validation /<br/>audit / domain / time"]
-        config["config<br/>SecurityConfig (temporary), WebConfig (locale)"]
+        config["config<br/>SecurityConfig, MethodSecurityConfig,<br/>WebConfig (locale)"]
     end
 
     subgraph planned["planned"]
@@ -144,15 +146,15 @@ flowchart TB
 
 | Package | Contents today | Status |
 |---|---|---|
-| `config` | `SecurityConfig` (temporary form login, public health check and static assets), `WebConfig` (`CookieLocaleResolver` + `LocaleChangeInterceptor`). | M1/M2. Security with real users and roles replaces `SecurityConfig` in M3. |
+| `config` | `SecurityConfig` (filter chain: URL rules, form login, logout, BCrypt encoder), `MethodSecurityConfig` (`@EnableMethodSecurity`), `WebConfig` (`CookieLocaleResolver` + `LocaleChangeInterceptor`). | M3 week 9 (security), M2 (locale). |
 | `common.domain` | `BaseEntity`: identity key, equality by id. | M2. |
 | `common.exception` | `DomainException` (message key + arguments) and its subclasses `NotFoundException`, `InvalidFieldException`, `InvalidTransitionException`, `LogLockedException`, `DeletionNotAllowedException`. | M2. |
 | `common.validation` | `@Chronological` class-level constraint (end not before start) and its validator. | M2. |
 | `common.audit` | Envers revision entity `AuditRevision` (`revinfo`) and `AuditRevisionListener` (stores the user's email, or `system`). | M2 (mapped and writing revisions). |
 | `common.time` | `TimeConfig`: one `Clock` bean in `sitelog.time-zone` (Europe/Zagreb). | M2. |
 | `common.web` | `WebExceptionHandler`, `LayoutModelAdvice` (the two `@ControllerAdvice`s, section 7), `Flash` (flash message keys), `SafeRedirects` (back to the referer only if it is a local path), `Pages` (caps page size and whitelists sort fields). | M2. |
-| `user` | `AppUser`, `Role`, `RoleName`; `CurrentUserProvider` with `ConfiguredCurrentUserProvider` (M2 stand-in that acts as a configured seed user). | M2; login and roles in M3. |
-| `site` | CRUD screens, `Active` / `Finished` filter computed in the query, delete rule. | M2. |
+| `user` | `domain`: `AppUser`, `Role`, `RoleName`. `security`: `AppUserDetailsService` (login lookup), `AppUserPrincipal` (the user kept in the session), `PreferredLanguageLoginSuccessHandler`. `service`: `UserService` (administration, profile, password change), `PasswordPolicy`, `CurrentUserProvider` with `SecurityContextCurrentUserProvider`. `web`: `LoginController`, `ProfileController`, `UserAdminController` (`/admin/users`), forms with `@PasswordLength`. | M2 (entities); M3 week 9 (login, administration, profile). |
+| `site` | CRUD screens, `Active` / `Finished` filter computed in the query, delete rule; `service.SiteAccess`, the `@siteAccess` bean of the own-site rule ([section 8](#8-security)). | M2; `SiteAccess` M3 week 9. |
 | `crew` | CRUD screens, delete only if unused, otherwise deactivate. | M2. |
 | `dailylog` | Aggregate `DailyLog → WorkEntry → CrewAssignment`: nested form, separate work entry and crew row pages, detail with lock notice, sign-off, delete; `LogReopenRequest` entity. | M2 (CRUD, sign-off, lock). Reopen workflow and audit view: M3. |
 | `incident` | `Incident`, `CorrectiveAction`, enums, repositories; `IncidentStatsService` (open incident counter in the sidebar). | M2 (entities). Screens and severity workflow (AR2): M3. |
@@ -168,7 +170,7 @@ flowchart TB
 |---|---|---|---|
 | `web` | `@Controller`, form objects (`DailyLogForm`, `WorkEntryForm`, ...; Bean Validation annotations), view names | its own and other features' `service` (for example the crew options of the daily log form) | contain business rules; touch repositories; open transactions; put entities in a form backing object |
 | `api` | `@RestController` under `/api/v1/...`, request/response **records**, mappers entity → record | its feature's `service` | return entities; contain business rules |
-| `service` | `@Service` classes: business rules, state transitions, transactions (class-level `@Transactional(readOnly = true)`, `@Transactional` on writes), authorization (`@PreAuthorize`, M3); **commands** in (`DailyLogCommand`, ...) and **view records** out (`DailyLogDetails`, `SiteListItem`, ...) | own `repository`, other features' `repository` for existence checks of the delete rules, other features' `service`, the AI port (M3) | depend on `web`/`api` types (HTTP, `Model`, `RedirectAttributes`); return entities to controllers |
+| `service` | `@Service` classes: business rules, state transitions, transactions (class-level `@Transactional(readOnly = true)`, `@Transactional` on writes), authorization (`@PreAuthorize`); **commands** in (`DailyLogCommand`, ...) and **view records** out (`DailyLogDetails`, `SiteListItem`, ...) | own `repository`, other features' `repository` for existence checks of the delete rules, other features' `service`, the AI port (M3) | depend on `web`/`api` types (HTTP, `Model`, `RedirectAttributes`); return entities to controllers |
 | `repository` | Spring Data JPA interfaces; JPQL with fetch joins / `@EntityGraph`; record projections for reports | — | contain business decisions |
 | `domain` | JPA entities, enums, domain exceptions; invariants that depend only on the entity's own state | — | depend on Spring MVC or on other layers |
 
@@ -200,7 +202,7 @@ environment.
 | `test` | Testcontainers `postgres:17-alpine`, connection injected by `@ServiceConnection` | `stub` | none (container credentials are generated) | Testcontainers implemented (M1) without a named profile; `test` profile with the stub adapter in M3. |
 | `stub` | — | `StubIncidentDraftExtractor`: deterministic drafts, no network | none | M3. Always used in tests and CI. |
 | `ai` | — | `AnthropicIncidentDraftExtractor` via Spring AI 2.x; cheap configurable model, low `max-tokens`, request cap | `ANTHROPIC_API_KEY` environment variable | M3. |
-| `prod` | Supabase through the Supavisor pooler, session mode, `sslmode=require`; Flyway migrates on startup | `ai` on Render (`stub` possible if the key is absent) | Render environment variables (datasource URL, user, password, AI key) | M3. |
+| `prod` | Supabase through the Supavisor pooler, session mode, `sslmode=require`; Flyway migrates on startup | `ai` on Render (`stub` possible if the key is absent) | Render environment variables `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` (optional `DB_POOL_SIZE`); AI key in M3 | `application-prod.yml` implemented (M3 week 9); AI part with the AI feature. |
 
 Exactly one AI adapter bean exists at runtime: activating neither or both of `stub` and `ai`
 fails at startup instead of picking a provider silently.
@@ -226,7 +228,7 @@ sequenceDiagram
         C-->>M: 200, form re-rendered with field errors (no service call, no transaction)
     else form valid
         C->>S: create(siteId, command built from the form)
-        S->>S: @PreAuthorize (SITE_MANAGER of this site, M3), evaluated before the transaction
+        S->>S: @PreAuthorize (SITE_MANAGER of this site), evaluated before the transaction
         Note over S,DB: @Transactional begins (connection taken from HikariCP)
         S->>R: load Site, check date not in the future and no log exists for (site, date)
         R->>DB: SELECT
@@ -255,8 +257,8 @@ sequenceDiagram
   response record; a validation error answers 400 and a domain error its `ProblemDetail`
   status, instead of a re-rendered form or a flash message.
 
-Status: screens, service and Envers implemented (M2); `@PreAuthorize` with real roles and the
-REST variant in M3.
+Status: screens, service and Envers implemented (M2); `@PreAuthorize` with real roles
+implemented (M3 week 9); the REST variant in M3.
 
 ### 6.2 Signing off a daily log, and two users at the same time
 
@@ -352,10 +354,10 @@ ADR-0002 and `docs/ai-evaluation.md`).
 
 | Concern | Design | Status |
 |---|---|---|
-| **Security** | Form login with users from the database (BCrypt), four roles. URL rules in the `SecurityFilterChain` (public: health check, login, static assets); business authorization with `@PreAuthorize` on service methods, including ownership checks (a site manager only edits logs of the sites they manage). The Thymeleaf security dialect hides actions; it does not replace the service check. REST API secured with the same rules. | Temporary `SecurityConfig` implemented (M1). Real users and roles: **planned for M3**. |
+| **Security** | Form login with users from the database (BCrypt), four roles. URL rules in the `SecurityFilterChain` (public: health check, login, static assets); business authorization with `@PreAuthorize` on service methods, including ownership checks (a site manager only edits logs of the sites they manage). The Thymeleaf security dialect hides actions; it does not replace the service check. REST API secured with the same rules. | **Implemented in M3 week 9** for the screens ([section 8](#8-security)); REST API rules with the API (M3). |
 | **Auditing** | Three layers: `LogReopenRequest` records **why** and who requested/approved; a domain `@Aspect` records **which action** (sign-off, reopen, incident transitions) and by whom; Hibernate Envers records **what changed** (before/after per revision) on `DailyLog`, `WorkEntry`, `CrewAssignment`. See [ADR-0003](../adr/0003-reopen-audit-trail.md). | Envers **implemented in M2**: `@Audited` on the three entities, `AuditRevision` + `AuditRevisionListener` write `revinfo` with the user (or `system`), append-only tables (V5). Reopen workflow, `@Aspect` and the before/after view: **M3**. |
 | **Concurrency** | `@Version` on `DailyLog` and `Incident`; `OPTIMISTIC_FORCE_INCREMENT` when a child changes; conflict → 409 (section 6.2). | Implemented in M2 (version from the form, forced increment, 409 page). Two-thread sign-off test **planned for M4**. |
-| **i18n** | All UI text from `messages.properties` (en) and `messages_hr.properties` (hr); `fallback-to-system-locale: false`, so an unsupported language falls back to English. `WebConfig`: `?lang=hr` is read by a `LocaleChangeInterceptor` and stored in the `lang` cookie by a `CookieLocaleResolver` (default English, one year); an invalid value is ignored. Flash messages and domain errors are message keys, translated when the page renders. | **Implemented in M2** for every existing screen, validation and error page. Applying the user's `preferred_language` at login: **M3**. |
+| **i18n** | All UI text from `messages.properties` (en) and `messages_hr.properties` (hr); `fallback-to-system-locale: false`, so an unsupported language falls back to English. `WebConfig`: `?lang=hr` is read by a `LocaleChangeInterceptor` and stored in the `lang` cookie by a `CookieLocaleResolver` (default English, one year); an invalid value is ignored. Flash messages and domain errors are message keys, translated when the page renders. | **Implemented in M2** for every existing screen, validation and error page. The user's `preferred_language` is applied at login (M3 week 9). |
 | **Error handling** | Domain exceptions thrown by services; `@RestControllerAdvice` → `ProblemDetail` for `/api/v1`; screens get flash errors or an error page. No stack traces or internal messages in responses (`include-stacktrace: never`, `include-message: never` outside `dev`). | Screens **implemented in M2** (see below); REST `ProblemDetail` handler **M3**. |
 | **Scheduling** | Two daily `@Scheduled` jobs (overdue corrective actions, unsigned log reminder), protected against double execution by ShedLock (ADR-0004). Each job calls a service method, which holds the transaction. | **Planned for M4**. |
 | **Transactions** | `@Transactional` on services only (`readOnly = true` for queries); `open-in-view=false`. | Implemented (M1/M2). |
@@ -376,3 +378,134 @@ cause of the error, so the error pages do not query it, and the layout treats th
 optional. The error templates (`error/403.html`, `404`, `409`, `500`, fallback `error.html`) show
 translated text only, never a stack trace or exception message.
 
+
+## 8. Security
+
+Implemented in M3 week 9. Two layers, each with its own job: the **filter chain** decides who
+may reach a URL at all, **method security** on the services decides who may perform an
+operation. The services are the rule; the URL rules and the hidden buttons are additional.
+
+```mermaid
+flowchart LR
+    req["HTTP request"] --> chain
+    subgraph chain["SecurityFilterChain (SecurityConfig)"]
+        direction TB
+        csrf["CSRF check on POST"]
+        url["URL rules<br/>public / /admin/** ADMIN /<br/>crew forms + POSTs ADMIN /<br/>everything else authenticated"]
+        csrf --> url
+    end
+    chain -->|"anonymous on a protected URL"| login["302 /login"]
+    chain --> ctrl["@Controller<br/>(binds form, no rules)"]
+    ctrl --> proxy
+    subgraph proxy["Service proxy"]
+        direction TB
+        pre["@PreAuthorize<br/>hasRole(...) and @siteAccess..."]
+        tx["@Transactional method"]
+        pre --> tx
+    end
+    pre -->|"refused: AccessDeniedException"| forbidden["403 page<br/>(user's language)"]
+```
+
+### URL level: `SecurityConfig`
+
+| Rule | Paths | Why at URL level |
+|---|---|---|
+| Public | `/login`, `/error`, `/actuator/health`, `/css/**`, `/js/**`, `/img/**`, `/favicon.ico` | Needed before sign-in (login page and its assets) and by the Docker / Render health check. |
+| `ADMIN` | `/admin/**` (user administration) | Second line of defence next to `@PreAuthorize("hasRole('ADMIN')")` on `UserService`. |
+| `ADMIN` | `GET /crews/new`, `GET /crews/*/edit`, every `POST` under `/crews` | Refused before form binding and validation, so a non-admin never sees the crew form, not even re-rendered with errors. The crew list stays readable. |
+| Signed in | everything else | Every page shows site data; no anonymous reading. |
+
+### Method level: `@PreAuthorize` on the services
+
+`MethodSecurityConfig` carries `@EnableMethodSecurity`. Every service class has
+`@PreAuthorize("isAuthenticated()")` for its read methods, and each write method narrows it:
+
+| Service methods | Expression |
+|---|---|
+| Sites (create, update, delete, manager options), crews (create, update, delete), all of `UserService` except the profile | `hasRole('ADMIN')` |
+| `DailyLogService.create`, `SiteService.getSummaryForNewLog` (the *New daily log* form) | `hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)` |
+| Daily log update, sign-off, delete, edit form; work entry and crew row create / update / delete | `hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)` (or `#id`) |
+| Profile, preferred language, password change | `isAuthenticated()` |
+
+- **Why on the services:** the REST API (M3) and any future caller go through the same methods,
+  so one rule protects screens and API. A refused call throws `AccessDeniedException` before the
+  method body and before the transaction opens.
+- **`SiteAccess`** (`site.service`, bean name `siteAccess`) answers only "is the signed-in user
+  the manager of this site / of this log's site?" (`existsByIdAndManager_Id`,
+  `existsByIdAndSite_Manager_Id`). The role is checked in the expression itself. An id that does
+  not exist answers `true`, so the service throws its not-found exception and the user sees 404
+  instead of a misleading 403; nothing is revealed, since every signed-in user may read every site.
+- **Why a separate `MethodSecurityConfig`:** the `@WebMvcTest` slices import `SecurityConfig` and
+  mock the services. Keeping `@EnableMethodSecurity` out of `SecurityConfig` keeps those slices
+  free of method-security proxies; the rules are tested on the real services instead
+  (`MethodSecurityTests`, `RoleAccessMatrixTests`).
+- **In the templates** the Thymeleaf security dialect hides actions the user may not perform:
+  `sec:authorize="hasRole('ADMIN')"` for admin actions, and for the own-site rule a flag computed
+  once per page with `th:with` (`#authorization.expression('hasRole(''SITE_MANAGER'')') and
+  @siteAccess.canManageSite(site.id)`, or `canManageLog(log.id)` on the log detail). This is
+  cosmetic only.
+
+The resulting permission matrix per role is in
+[Domain model — Permissions implemented today](./domain-model.md#permissions-implemented-today).
+
+### Login, session and logout
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant F as SecurityFilterChain
+    participant P as DaoAuthenticationProvider
+    participant D as AppUserDetailsService
+    participant H as PreferredLanguageLoginSuccessHandler
+
+    U->>F: POST /login (email, password, _csrf)
+    F->>P: authenticate
+    P->>D: loadUserByUsername(email)
+    D-->>P: AppUserPrincipal (id, role, language, active, BCrypt hash)
+    alt inactive or wrong password
+        P-->>U: 302 /login?error (same message for both)
+    else valid
+        P->>P: erase hash from the principal, new session id
+        F->>H: onAuthenticationSuccess
+        H-->>U: lang cookie = preferred language, 302 to the saved page or /sites
+    end
+```
+
+| Topic | Implementation |
+|---|---|
+| Users | `AppUserDetailsService` looks the e-mail up case-insensitively in `app_user` with its role (one query). `AppUserPrincipal` is a copy of the row, not the JPA entity (the session outlives the persistence context); authority `ROLE_<role>`. |
+| Passwords | `BCryptPasswordEncoder` (strength 10), the same algorithm as the hashes in the `V4` seed. Policy: at least 12 characters, at most 72 bytes (BCrypt's input limit); a change requires the current password and a confirmation. |
+| Inactive user | `isEnabled()` is the `active` flag; the provider refuses the login before checking the password. The page shows the same message as for a wrong password, so it does not reveal which e-mails exist. |
+| Language at login | `PreferredLanguageLoginSuccessHandler` writes the user's `preferred_language` through the application's `LocaleResolver` (the `lang` cookie of section 7), then continues to the saved request or `/sites`. |
+| Current user | `SecurityContextCurrentUserProvider`: `currentUserId()` reads the id from the principal without a query; `findCurrentUser()` reloads name and role, so a name changed on the profile shows at once. The Envers `AuditRevisionListener` records the same user. |
+| CSRF | On (Spring Security default). Thymeleaf forms with `th:action` get the hidden `_csrf` field automatically; a POST without a valid token answers 403. |
+| Session | HTTP session with Spring Security's default session-fixation protection (new session id at login). In `prod` the cookie is `Secure`, `HttpOnly`, `SameSite=Lax`. |
+| Logout | `POST /logout` with the CSRF token (a GET link cannot log anyone out); invalidates the session, deletes `JSESSIONID`, redirects to `/login?logout`. |
+| Refused calls | Signed-in user → 403 page in the user's language; anonymous → redirect to `/login`. Tested over real HTTP in `ForbiddenCallsHttpTests` (database unchanged after a refused POST, missing or forged CSRF token, inactive user, logout, session fixation). |
+
+## 9. Deployment
+
+Deployment setup implemented in M3 week 9; the first deployment on Render follows in M3. Full
+procedure, environment variables, redeploy and the wake-up steps before a demo:
+[Deployment (Render + Supabase)](../operations/deployment.md).
+
+```mermaid
+flowchart LR
+    dev["git push to main"] --> gh["GitHub repository"]
+    gh -->|"auto-deploy on commit<br/>(render.yaml Blueprint)"| build["Render build<br/>multi-stage Dockerfile:<br/>JDK 25 build, JRE 25 runtime"]
+    build --> app["SiteLog container<br/>profile prod, non-root,<br/>health check /actuator/health"]
+    browser["Browser"] -->|"HTTPS"| proxy["Render proxy<br/>(TLS ends here)"]
+    proxy -->|"HTTP + X-Forwarded-*"| app
+    app -->|"JDBC, HikariCP (5),<br/>sslmode=require"| pooler["Supabase Supavisor<br/>session pooler :5432"]
+    pooler --> pg[("Supabase PostgreSQL 17<br/>Flyway migrates on boot")]
+```
+
+| Decision | Choice | Reason |
+|---|---|---|
+| Image | Multi-stage `Dockerfile` (`eclipse-temurin:25-jdk-alpine` build, `25-jre-alpine` runtime), not buildpacks | The same image runs locally (`docker compose up`) and on Render; the build is explicit and reviewable; the runtime has no JDK or Maven and runs as a non-root user. |
+| Service definition | `render.yaml` Blueprint (free plan, Frankfurt, auto-deploy on commit, health check) | Versioned with the code; secrets are only names (`sync: false`), values are entered in the Render dashboard. |
+| Database connection | Supavisor **session** pooler, port 5432, TLS required | The direct connection is IPv6 only, which Render does not reach; the transaction pooler (6543) breaks server-side prepared statements and session state. In session mode each Hikari connection holds one pooler connection, hence the small pool (README, *HikariCP configuration*). |
+| Configuration | `application-prod.yml` reads `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` with no defaults | A missing variable fails the startup instead of connecting somewhere else; Render keeps the previous deploy. |
+| Exposure | Only `/actuator/health` (no details); no stack trace or message in error responses | Nothing about the configuration leaks through the deployed instance. |
+| Startup on 0.1 CPU | `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75 -XX:TieredStopAtLevel=1 -XX:+UseSerialGC` | Measured locally with the free plan's limits: 349 s → 168 s to start, at the cost of peak throughput the application does not need. |

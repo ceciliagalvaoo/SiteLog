@@ -343,8 +343,8 @@ per screen, is the Figma frame → template table in the README.
 | 28 | Sites list | `site/list.html` |
 | 29, 31, 31b, 32 | Site detail – overview, daily logs (with data and empty), incidents | `site/detail.html` |
 | 30, 34 | Site settings, New site | `site/form.html` |
-| 35 | My profile | `account/profile.html` |
-| 36–39 | Users list, detail, form, form error | `admin/user/list.html`, `detail.html`, `form.html` |
+| 35 | My profile | `user/profile.html` |
+| 36–39 | Users list, detail, form, form error | `user/list.html`, `user/form.html` (detail and edit on one page) |
 | 40–42 | Crews list, form, form error | `crew/list.html`, `crew/form.html` |
 | 43–44 | Notifications panel, empty | `fragments/notifications` |
 | 45 | Component set | `fragments/*`, `static/css/app.css`, `static/img/icons.svg` |
