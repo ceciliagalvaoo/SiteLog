@@ -1,0 +1,29 @@
+# Render Blueprint: the web service definition, versioned with the code.
+# Create once in Render with New > Blueprint (this repository); Render then asks for the values
+# marked sync: false. Secrets are never written here.
+# Guide: docs/operations/deployment.md
+services:
+  - type: web
+    name: sitelog
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    # Same region as the Supabase project (eu-central-1, Frankfurt): low latency to the database.
+    region: frankfurt
+    branch: main
+    # Every commit pushed to main builds and deploys a new image.
+    autoDeployTrigger: commit
+    # Render routes traffic to a new deploy only after this path answers 200.
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false

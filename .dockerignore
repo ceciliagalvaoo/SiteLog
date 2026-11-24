@@ -1,0 +1,7 @@
+# Allow-list: the build context contains ONLY what the Dockerfile needs.
+# Everything else (.env, .git, target/, docs/, IDE files) never reaches the image or the builder.
+*
+!mvnw
+!.mvn/
+!pom.xml
+!src/
