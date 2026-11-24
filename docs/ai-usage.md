@@ -228,3 +228,91 @@ I gave Claude Code specific drafting tasks with requirements I could verify in t
 - **Flash messages.** I confirmed that success messages display the site name correctly and that the regression test covers the single-`String` case.
 - **Tests.** I checked that the service tests exercise the confirmed business rules and that the controller tests cover PRG, validation, conflicts, and not-found responses.
 - **Documentation.** I checked that the architecture, database schema, and domain model pages match migrations V1–V6 and the current packages.
+
+Week 9 — M3: Security, Roles, User Administration, and Deployment Setup
+
+My decisions and work
+
+This week, I replaced the fixed M2 user with authentication and authorization, introduced user administration, and prepared the application for production deployment. My main focus was ensuring that security requirements were consistently enforced across the application while maintaining a scalable and maintainable architecture.
+
+Security architecture. I designed a two-layer authorization mechanism, placing business-level permissions in the services through @PreAuthorize so they can also be reused by the future REST API. I used the SecurityFilterChain for public paths, administrative endpoints, and crew forms. I separated @EnableMethodSecurity into a dedicated MethodSecurityConfig to avoid interference with @WebMvcTest slices.
+
+Site ownership. I established that site managers can modify daily logs, work entries, and crew rows only within their assigned sites. I introduced a dedicated SiteAccess bean to centralize ownership verification and decided that unknown identifiers should reach the resource lookup, ensuring that missing resources return 404 rather than a misleading 403.
+
+Authorization model. I analysed the role descriptions and established a restrictive permission model based on the principle of least privilege. Admins cannot write daily logs, authenticated users can read all sites, Safety Supervisors and Inspectors remain read-only until their workflows are implemented, and users are deactivated rather than deleted. I documented these assumptions as provisional and scheduled their reassessment for week 10.
+
+Authentication and user administration. I defined the account lifecycle, authentication behaviour, and validation requirements. Inactive accounts cannot authenticate, administrators cannot deactivate their own accounts or modify their own roles, and each site must have exactly one manager. I established password requirements of at least 12 characters and a maximum of 72 bytes, respecting BCrypt's input limit. I also incorporated the user's preferred language into the login workflow.
+
+Deployment strategy. I evaluated deployment alternatives and selected a Render Blueprint (render.yaml) to version the infrastructure configuration alongside the application. I chose a multi-stage Dockerfile to ensure consistency between local and production environments. For database connectivity, I selected the Supabase session pooler with mandatory TLS, considering the IPv6 limitation of the direct connection and the prepared-statement limitations of the transaction pooler.
+
+User interface. I reviewed the login, profile, and user administration screens against the high-fidelity Figma frames, evaluated their consistency with the original designs, and documented the deviations and their respective justifications in the README.
+
+Where AI assisted
+
+I used Claude Code selectively to reduce repetitive development effort, working from the technical requirements and implementation constraints I had already established.
+
+Boilerplate and implementation support. AI assisted with initial code drafts, standard Spring Security patterns, repetitive authorization annotations, form structures, and Thymeleaf templates.
+
+Test automation. AI helped generate repetitive HTTP test cases based on my permission matrix, endpoint definitions, and expected results.
+
+Configuration and benchmarking. AI assisted with configuration file syntax, container setup drafts, and the execution and collection of startup performance measurements.
+
+Documentation refinement. AI helped improve the wording, formatting, and organization of technical documentation.
+
+I reviewed the generated contributions, adapted them where necessary, and verified their behaviour before incorporating them into the project.
+
+What I reviewed and corrected
+
+During implementation and testing, I identified several issues that required technical investigation and adjustments.
+
+Incomplete authorization of creation forms. I identified that protecting save operations was insufficient because unauthorized users could still access the creation forms. I extended the authorization mechanism to SiteService.getSummaryForNewLog and restricted crew forms and POST requests to administrators, ensuring consistent access control throughout the workflow.
+
+Duplicate password validation messages. I identified that empty password fields triggered both required-field and minimum-length errors. I resolved this by introducing a composed @PasswordLength constraint with @ReportAsSingleViolation, ensuring that each field displays a single validation message.
+
+Thymeleaf security restrictions. I investigated an incompatibility between the login template and Thymeleaf 3.1's restrictions on accessing request parameters inside th:attr. I corrected the implementation by computing the condition through th:with and reusing the resulting variable.
+
+Production startup performance. I analysed the application's startup behaviour under Render's free-tier resource constraints of 0.1 CPU and 512 MB of memory. The initial startup time was 349 seconds. I selected the JVM options -XX:TieredStopAtLevel=1 and -XX:+UseSerialGC, reducing startup time to 168 seconds, an improvement of approximately 52%. I documented the resulting trade-off between startup performance and peak throughput.
+
+What I verified
+
+I established the acceptance criteria and validated the implementation through automated tests, integration tests, and deployment checks.
+
+Executed ./mvnw clean verify against PostgreSQL 17 using Testcontainers, obtaining 689 tests with zero failures.
+
+Achieved at least 99% line coverage in every service package and 93% overall coverage.
+
+Validated the permission matrix across more than 20 endpoints using all five demonstration accounts and anonymous access.
+
+Confirmed that unauthorized requests return 403 responses without modifying database records.
+
+Verified CSRF protection, inactive account restrictions, logout behaviour, session fixation protection, and localized error messages.
+
+Built and executed the application and database using a single docker compose up command.
+
+Confirmed that the production image contains no .env file and that /actuator/health is the only exposed Actuator endpoint.
+
+Verified that the documentation site builds successfully with strict broken-link validation enabled.
+
+Representative AI prompts (summarised)
+
+I used focused prompts to accelerate specific implementation tasks without delegating the underlying technical decisions.
+
+Implementation support. Provide standard Spring Security implementation patterns following my predefined authentication requirements, permission rules, and account restrictions.
+
+Test automation. Generate repetitive HTTP test cases using my permission matrix and expected results. Include valid request bodies and CSRF tokens to isolate authorization behaviour.
+
+Deployment configuration. Assist with the configuration syntax for my selected deployment architecture, respecting environment variable requirements, container security constraints, and production resource limits.
+
+Performance measurement. Execute the container startup benchmark under the specified CPU and memory constraints and report the measured startup time.
+
+Documentation refinement. Improve the clarity and formatting of the technical documentation without changing the architectural decisions or their justifications.
+
+Review outcome
+
+By the end of the week, I had established a validated security architecture, a functional user administration workflow, and a reproducible deployment setup.
+
+I reviewed the authorization expressions against the permission matrix, confirmed consistent access restrictions across forms and operations, validated authentication and password policies, and assessed the production configuration for security and performance concerns.
+
+The provisional authorization rules remain documented for reassessment during the implementation of the week 10 workflows.
+
+My use of AI followed a targeted approach: I delegated repetitive coding patterns, test generation, configuration assistance, and documentation refinement while retaining responsibility for architectural decisions, business logic, technical problem-solving, integration, and final validation. This allowed me to improve development efficiency while maintaining technical ownership and accountability for the delivered solution.
