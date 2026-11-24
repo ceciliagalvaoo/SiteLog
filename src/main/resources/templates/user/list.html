@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<!--/*
+  Users, Admin only (Figma p. 37 "Administration - Users list"). The whole /admin/** path is
+  ADMIN-only in SecurityConfig and on UserService; the menu item is hidden for the other roles.
+  Model: users (Page<UserListItem>: id, email, fullName, role, preferredLanguage, active),
+  q (text filter). Sorting: ?sort=fullName|email|active (the controller ignores anything else).
+  Each row opens the user form (Figma p. 38 "User detail" and the edit form are one screen here);
+  activate / deactivate are on that page, as in the prototype.
+  Mobile: the table becomes stacked cards (table--stack).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'users')}">
+<head><title th:text="#{user.list.title} + ' · ' + #{app.name}">Users · SiteLog</title></head>
+<body>
+<div id="content" class="stack"
+     th:with="sortKey=${users.sort.isSorted() ? users.sort.iterator().next().property : 'fullName'}">
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{user.list.eyebrow}">Administration</p>
+			<h1 th:text="#{user.list.title}">Users</h1>
+			<p class="lead" th:text="#{user.list.lead}">Accounts, roles and access.</p>
+		</div>
+		<div class="page-header__actions">
+			<a class="btn btn--primary" th:href="@{/admin/users/new}" href="/admin/users/new">
+				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+				<span th:text="#{user.list.new}">New user</span>
+			</a>
+		</div>
+	</div>
+
+	<form class="filter-bar" method="get" th:action="@{/admin/users}" action="/admin/users" role="search">
+		<div class="field filter-bar__search">
+			<label class="field__label" for="q" th:text="#{user.list.search.label}">Search users</label>
+			<span class="control-icon">
+				<svg th:replace="~{fragments/icon :: icon('search')}"></svg>
+				<input class="control" type="search" id="q" name="q" th:value="${q}" th:placeholder="#{user.list.filter.placeholder}">
+			</span>
+		</div>
+		<input type="hidden" name="sort" th:value="${sortKey}">
+		<button type="submit" class="btn btn--secondary" th:text="#{common.filter}">Filter</button>
+	</form>
+
+	<div class="card" th:if="${users.empty}">
+		<div th:replace="~{fragments/table-row :: emptyState(#{user.list.empty}, #{user.list.empty.body}, #{common.clearFilter}, @{/admin/users})}"></div>
+	</div>
+
+	<div class="table-wrap" th:unless="${users.empty}">
+		<table class="table table--stack table--users">
+			<caption class="visually-hidden" th:text="#{user.list.title}">Users</caption>
+			<thead>
+			<tr>
+				<th scope="col" th:attr="aria-sort=${sortKey == 'fullName'} ? 'ascending'">
+					<a class="sort-link" th:href="@{/admin/users(q=${q}, sort='fullName')}" th:text="#{user.column.name}">Name</a>
+				</th>
+				<th scope="col" th:attr="aria-sort=${sortKey == 'email'} ? 'ascending'">
+					<a class="sort-link" th:href="@{/admin/users(q=${q}, sort='email')}" th:text="#{user.column.email}">E-mail</a>
+				</th>
+				<th scope="col" th:text="#{user.column.role}">Role</th>
+				<th scope="col" th:attr="aria-sort=${sortKey == 'active'} ? 'ascending'">
+					<a class="sort-link" th:href="@{/admin/users(q=${q}, sort='active')}" th:text="#{user.column.status}">Status</a>
+				</th>
+				<th scope="col" th:text="#{user.column.language}">Language</th>
+				<th scope="col"><span class="visually-hidden" th:text="#{common.actions}">Actions</span></th>
+			</tr>
+			</thead>
+			<tbody>
+			<tr th:each="u : ${users}">
+				<td th:replace="~{fragments/table-row :: linkCell(#{user.column.name}, ${u.fullName}, @{/admin/users/{id}/edit(id=${u.id})})}"></td>
+				<td th:replace="~{fragments/table-row :: cell(#{user.column.email}, ${u.email}, null)}"></td>
+				<td th:replace="~{fragments/table-row :: chipCell(#{user.column.role}, 'role', ${u.role})}"></td>
+				<td th:replace="~{fragments/table-row :: chipCell(#{user.column.status}, 'user', ${u.active} ? 'ACTIVE' : 'INACTIVE')}"></td>
+				<td th:replace="~{fragments/table-row :: cell(#{user.column.language}, #{${'lang.' + u.preferredLanguage}}, null)}"></td>
+				<td class="cell--actions" th:attr="data-label=#{common.actions}">
+					<a class="btn-icon" th:href="@{/admin/users/{id}/edit(id=${u.id})}"
+					   th:aria-label="#{user.list.open(${u.fullName})}" th:title="#{user.list.open(${u.fullName})}">
+						<svg th:replace="~{fragments/icon :: iconSm('chevron-right')}"></svg>
+					</a>
+				</td>
+			</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<nav th:replace="~{fragments/pagination :: pager(${users}, @{/admin/users(q=${q}, sort=${sortKey})})}"></nav>
+</div>
+</body>
+</html>

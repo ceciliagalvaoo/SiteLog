@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!--/*
+  New user / edit user, Admin only (Figma p. 39 "New user form", p. 40 "validation error (email
+  already used)", p. 38 "User detail" - the header of the edit page: name, role, status and the
+  Deactivate / Activate action).
+
+  Model: userForm (NewUserForm when new, UserForm when editing), userId (null = new), roles
+  (RoleName values, label role.<X>), languages (["en","hr"], label lang.<code>); when editing
+  also user (UserView), siteOptions (List<SiteAssignmentOption>: id, code, name, managerName,
+  assigned) and siteAssignmentForm (siteIds) -> POST /admin/users/{id}/sites.
+
+  Differences from the prototype, on purpose:
+  - Assigned sites is a separate card with its own POST (a site always needs a manager, so the
+    service checks the whole assignment at once); only for an active Site Manager.
+  - The Admin's own account (user.self): role and Active are shown read-only and sent as hidden
+    fields, and there is no Deactivate button - the service refuses both anyway.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'users')}">
+<head><title th:text="(${userId == null} ? #{user.form.new.title} : ${user.fullName}) + ' · ' + #{app.name}">New user · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="isNew=${userId == null}, isSelf=${userId != null and user.self}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.users}">
+		<a th:href="@{/admin/users}" href="/admin/users" th:text="#{nav.users}">Users</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${isNew} ? #{user.form.new.title} : ${user.fullName}">New user</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="${isNew} ? #{user.list.eyebrow} : #{user.form.edit.eyebrow}">Administration</p>
+			<h1 th:text="${isNew} ? #{user.form.new.title} : ${user.fullName}">New user</h1>
+			<p class="lead" th:if="${isNew}" th:text="#{user.form.new.lead}">Create an account.</p>
+			<p class="lead" th:unless="${isNew}">
+				<span th:replace="~{fragments/chip :: status('role', ${user.role})}"></span>
+				<span th:replace="~{fragments/chip :: status('user', ${user.active} ? 'ACTIVE' : 'INACTIVE')}"></span>
+				<span th:text="${user.email}">marko.kovac@sitelog.hr</span>
+			</p>
+		</div>
+		<div class="page-header__actions" th:unless="${isNew or isSelf}">
+			<form th:if="${user.active}" method="post" th:action="@{/admin/users/{id}/deactivate(id=${userId})}">
+				<button type="submit" class="btn btn--danger" th:text="#{user.action.deactivateUser}">Deactivate user</button>
+			</form>
+			<form th:unless="${user.active}" method="post" th:action="@{/admin/users/{id}/activate(id=${userId})}">
+				<button type="submit" class="btn btn--secondary" th:text="#{user.action.activateUser}">Activate user</button>
+			</form>
+		</div>
+	</div>
+
+	<form class="form" th:object="${userForm}" novalidate method="post"
+	      th:action="${isNew} ? @{/admin/users} : @{/admin/users/{id}(id=${userId})}">
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', #{user.form.error.title}, #{user.form.error.body})}"></div>
+		</th:block>
+		<section class="card">
+			<div class="card__header">
+				<h2 th:text="#{user.form.details.title}">User details</h2>
+				<p class="card__subtitle" th:text="#{user.form.details.lead}">Account identity and access permissions.</p>
+			</div>
+			<div class="form-grid form-grid--2">
+				<div th:replace="~{fragments/input :: textField('fullName', #{user.field.fullName}, 'text', #{user.field.fullName.placeholder}, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('email', #{user.field.email}, 'email', null, true)}"></div>
+
+				<th:block th:unless="${isSelf}">
+					<div th:replace="~{fragments/input :: enumSelectField('role', #{user.field.role}, ${roles}, 'role', #{user.field.role.empty}, true)}"></div>
+				</th:block>
+				<div class="field" th:if="${isSelf}">
+					<span class="field__label" th:text="#{user.field.role}">Role</span>
+					<input type="hidden" th:field="*{role}">
+					<span><span th:replace="~{fragments/chip :: status('role', ${user.role})}"></span></span>
+					<p class="field__hint" th:text="#{user.field.role.self}">You cannot change your own role.</p>
+				</div>
+				<div th:replace="~{fragments/input :: enumSelectField('preferredLanguage', #{user.field.preferredLanguage}, ${languages}, 'lang', null, true)}"></div>
+
+				<th:block th:if="${!isNew and !isSelf}">
+					<label th:replace="~{fragments/toggle :: toggle('active', #{common.active}, #{user.field.active.hint})}"></label>
+				</th:block>
+				<input type="hidden" th:if="${isSelf}" th:field="*{active}">
+			</div>
+
+			<div class="field" th:if="${isNew}"
+			     th:with="hasError=${#fields.hasErrors('initialPassword')}" th:classappend="${hasError} ? 'field--error'">
+				<label class="field__label" for="initialPassword">
+					<span th:text="#{user.field.initialPassword}">Initial password</span><span class="field__req" aria-hidden="true">*</span>
+				</label>
+				<input class="control" type="password" th:field="*{initialPassword}" required autocomplete="new-password"
+				       th:attr="aria-invalid=${hasError} ? 'true', aria-describedby=${hasError} ? 'initialPassword-hint initialPassword-error' : 'initialPassword-hint'">
+				<p class="field__hint" id="initialPassword-hint" th:text="#{user.field.initialPassword.hint(${passwordMinLength})}">At least 12 characters. The user changes it on the profile page.</p>
+				<p class="field__error" th:if="${hasError}" id="initialPassword-error" th:errors="*{initialPassword}">Password is required</p>
+			</div>
+		</section>
+		<div class="form-actions">
+			<a class="btn btn--secondary" th:href="@{/admin/users}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary" th:text="${isNew} ? #{user.form.create} : #{common.saveChanges}">Create user</button>
+		</div>
+	</form>
+
+	<section class="card" th:unless="${isNew}">
+		<div class="card__header">
+			<h2 th:text="#{user.sites.title}">Assigned sites</h2>
+			<p class="card__subtitle" th:text="#{user.sites.lead}">Sites this site manager is responsible for.</p>
+		</div>
+		<p class="text-muted" th:unless="${user.siteManager() and user.active}" th:text="#{user.sites.onlyManagers}">Only active site managers can be assigned to sites.</p>
+		<form th:if="${user.siteManager() and user.active}" class="form" th:object="${siteAssignmentForm}" method="post"
+		      th:action="@{/admin/users/{id}/sites(id=${userId})}">
+			<fieldset class="field" th:classappend="${#fields.hasErrors('siteIds')} ? 'field--error'">
+				<legend class="visually-hidden" th:text="#{user.sites.title}">Assigned sites</legend>
+				<p class="field__error" th:if="${#fields.hasErrors('siteIds')}" id="siteIds-error" th:errors="*{siteIds}">A site cannot be left without a manager</p>
+				<p class="text-muted" th:if="${#lists.isEmpty(siteOptions)}" th:text="#{user.sites.none}">There are no sites yet.</p>
+				<ul class="option-list" th:unless="${#lists.isEmpty(siteOptions)}">
+					<li th:each="option : ${siteOptions}">
+						<label class="option">
+							<input type="checkbox" th:field="*{siteIds}" th:value="${option.id}">
+							<span class="option__text">
+								<span class="option__title" th:text="${option.code + ' · ' + option.name}">ZG-01 · Riverside Tower</span>
+								<span class="option__hint" th:unless="${option.assigned}"
+								      th:text="${option.managerName != null} ? #{user.sites.currentManager(${option.managerName})} : #{user.sites.noManager}">Current manager: Luka Matić</span>
+							</span>
+						</label>
+					</li>
+				</ul>
+			</fieldset>
+			<div class="form-actions">
+				<button type="submit" class="btn btn--secondary" th:text="#{user.sites.submit}">Save site assignment</button>
+			</div>
+		</form>
+	</section>
+</div>
+</body>
+</html>

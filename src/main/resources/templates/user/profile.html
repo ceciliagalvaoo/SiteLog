@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<!--/*
+  My profile, every signed-in user (Figma p. 36 "Account - My profile with user menu open").
+  Left: identity card (avatar, name, role, status, managed sites). Right: "Personal details"
+  (full name; the e-mail is the login and only the Admin changes it), "Preferences" (language as a
+  segmented control, English / Croatian) and, below, "Change password".
+
+  Model: profile (UserView: email, fullName, role, preferredLanguage, active, managedSites,
+  siteManager()), profileForm (fullName, preferredLanguage) -> POST /profile,
+  passwordForm (currentPassword, newPassword, confirmPassword) -> POST /profile/password,
+  languages (["en","hr"], label lang.<code>), passwordMinLength.
+  Two independent forms: a validation error in one keeps the other one as it was. Passwords are
+  never echoed back (the controller clears passwordForm after a failed submit).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'profile')}">
+<head><title th:text="#{profile.title} + ' · ' + #{app.name}">My profile · SiteLog</title></head>
+<body>
+<div id="content" class="stack">
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{profile.eyebrow}">My account</p>
+			<h1 th:text="#{profile.title}">My profile</h1>
+			<p class="lead" th:text="#{profile.lead}">Your account details, language and password.</p>
+		</div>
+	</div>
+
+	<div class="profile-grid">
+		<!-- ======================================================== identity card -->
+		<aside class="card profile-card" th:aria-label="#{profile.card.label}">
+			<span class="avatar avatar--lg" aria-hidden="true"
+			      th:text="${currentUser != null ? currentUser.initials : #strings.toUpperCase(#strings.substring(profile.fullName, 0, 1))}">MK</span>
+			<div class="profile-card__who">
+				<p class="profile-card__name" th:text="${profile.fullName}">Marko Kovačević</p>
+				<p class="text-muted" th:text="#{${'role.' + profile.role}}">Site Manager</p>
+			</div>
+			<span th:replace="~{fragments/chip :: status('user', ${profile.active} ? 'ACTIVE' : 'INACTIVE')}"></span>
+			<dl class="profile-card__facts">
+				<div>
+					<dt th:text="#{profile.field.email}">E-mail</dt>
+					<dd th:text="${profile.email}">manager@sitelog.test</dd>
+				</div>
+				<div th:if="${profile.siteManager()}">
+					<dt th:text="#{profile.managedSites}">Sites you manage</dt>
+					<dd th:if="${#lists.isEmpty(profile.managedSites)}" th:text="#{profile.managedSites.none}">You do not manage any site.</dd>
+					<dd th:unless="${#lists.isEmpty(profile.managedSites)}">
+						<ul class="plain-list">
+							<li th:each="site : ${profile.managedSites}">
+								<a th:href="@{/sites/{id}(id=${site.id})}" th:text="${site.code + ' · ' + site.name}">ZG-01 · Riverside Tower</a>
+							</li>
+						</ul>
+					</dd>
+				</div>
+			</dl>
+		</aside>
+
+		<div class="stack">
+			<!-- ==================================================== details + preferences -->
+			<form class="form" th:object="${profileForm}" novalidate method="post" th:action="@{/profile}">
+				<th:block th:if="${#fields.hasErrors('*')}">
+					<div th:replace="~{fragments/flash :: flash('error', #{profile.form.error.title}, #{profile.form.error.body})}"></div>
+				</th:block>
+
+				<section class="card">
+					<div class="card__header">
+						<h2 th:text="#{profile.details.title}">Personal details</h2>
+						<p class="card__subtitle" th:text="#{profile.details.lead}">Your name appears on daily logs, sign-offs and reports.</p>
+					</div>
+					<div class="form-grid form-grid--2">
+						<div th:replace="~{fragments/input :: textField('fullName', #{profile.field.fullName}, 'text', null, true)}"></div>
+						<div class="field">
+							<label class="field__label" for="profile-email" th:text="#{profile.field.email}">E-mail</label>
+							<input class="control control--readonly" type="email" id="profile-email" th:value="${profile.email}" readonly
+							       aria-describedby="profile-email-hint">
+							<p class="field__hint" id="profile-email-hint" th:text="#{profile.field.email.hint}">Your login; only the administrator can change it.</p>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card__header">
+						<h2 th:text="#{profile.preferences.title}">Preferences</h2>
+						<p class="card__subtitle" th:text="#{profile.preferences.lead}">The language SiteLog uses after you sign in.</p>
+					</div>
+					<fieldset class="field" th:classappend="${#fields.hasErrors('preferredLanguage')} ? 'field--error'">
+						<legend class="field__label" th:text="#{profile.field.preferredLanguage}">Preferred language</legend>
+						<div class="segmented">
+							<th:block th:each="code : ${languages}">
+								<input type="radio" class="segmented__input" th:field="*{preferredLanguage}" th:value="${code}">
+								<label class="segmented__option" th:for="${#ids.prev('preferredLanguage')}" th:text="#{${'lang.' + code}}">English (EN)</label>
+							</th:block>
+						</div>
+						<p class="field__error" th:if="${#fields.hasErrors('preferredLanguage')}" th:errors="*{preferredLanguage}">Select English or Croatian</p>
+					</fieldset>
+				</section>
+
+				<div class="form-actions">
+					<button type="submit" class="btn btn--primary" th:text="#{profile.save}">Save profile</button>
+				</div>
+			</form>
+
+			<!-- ==================================================== password -->
+			<form class="form" th:object="${passwordForm}" novalidate method="post" th:action="@{/profile/password}">
+				<th:block th:if="${#fields.hasErrors('*')}">
+					<div th:replace="~{fragments/flash :: flash('error', #{profile.password.error.title}, #{profile.form.error.body})}"></div>
+				</th:block>
+				<section class="card">
+					<div class="card__header">
+						<h2 th:text="#{profile.password.title}">Change password</h2>
+						<p class="card__subtitle" th:text="#{profile.password.hint(${passwordMinLength})}">At least 12 characters.</p>
+					</div>
+					<div class="form-grid">
+						<div th:replace="~{fragments/input :: textField('currentPassword', #{profile.field.currentPassword}, 'password', null, true)}"></div>
+					</div>
+					<div class="form-grid form-grid--2">
+						<div th:replace="~{fragments/input :: textField('newPassword', #{profile.field.newPassword}, 'password', null, true)}"></div>
+						<div th:replace="~{fragments/input :: textField('confirmPassword', #{profile.field.confirmPassword}, 'password', null, true)}"></div>
+					</div>
+					<div class="form-actions">
+						<button type="submit" class="btn btn--secondary" th:text="#{profile.password.submit}">Change password</button>
+					</div>
+				</section>
+			</form>
+		</div>
+	</div>
+</div>
+</body>
+</html>
