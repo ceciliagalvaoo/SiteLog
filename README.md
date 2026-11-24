@@ -60,7 +60,7 @@ Domain model, roles and state machines: [`docs/architecture/domain-model.md`](do
 |---|---|---|---|
 | M1 | week 4 (delivered week 5, 2026-11-01) | Domain model, ADR-0001, empty project running with PostgreSQL in Docker, CI, low-fi wireframes, hosting and AI provider chosen | Done |
 | M2 | week 8 (2026-11-22) | Architecture and database design, migrations + seed, parent-child CRUD on screens, hi-fi prototype and component set | Implemented; checkpoint 2026-11-22 |
-| M3 | week 11 (2026-12-13) | Security with all roles, REST API + OpenAPI, audited reopen and severity workflow, AI feature behind a port with stub + evaluation cases, first deployment | In progress. Week 9 done: login, roles and method-level authorization, user administration and password change, production profile, Dockerfile, Render Blueprint, app + database in Docker Compose. First deployment, REST API, reopen, incidents and AI: weeks 10–11. |
+| M3 | week 11 (2026-12-13) | Security with all roles, REST API + OpenAPI, audited reopen and severity workflow, AI feature behind a port with stub + evaluation cases, first deployment | In progress. Week 9 done: login, roles and method-level authorization, user administration and password change, production profile, Dockerfile, Render Blueprint, app + database in Docker Compose, first deployment on Render + Supabase. REST API, reopen, incidents and AI: weeks 10–11. |
 | M4 | week 14 (2027-01-03) | Compliance report, test coverage, i18n (en/hr), scheduled jobs, performance measurement, final deployment | Planned |
 | Final | week 15 (2027-01-10) | Everything, including the 10-minute video | Planned |
 
@@ -103,7 +103,9 @@ What exists today (M1, M2 and M3 week 9):
   database unchanged, missing or forged CSRF token, inactive user, logout, session fixation;
   `ForbiddenCallsHttpTests`). Coverage report: [`docs/jacoco/`](docs/jacoco/index.html).
 
-Next in M3 (weeks 10–11): first deployment on Render + Supabase, REST API with OpenAPI, reopen
+Deployed at https://sitelog-aq2e.onrender.com (Render + Supabase).
+
+Next in M3 (weeks 10–11): REST API with OpenAPI, reopen
 workflow (AR1), incident screens and severity workflow (AR2), AI feature.
 
 ## Technology choices
@@ -239,8 +241,11 @@ Step-by-step guide, environment variables, redeploy and wake-up procedure:
 
 ### Live URL
 
-To be added after the first deploy (Render web service + Supabase database, M3; verified again
-in M4).
+**https://sitelog-aq2e.onrender.com** — Render free web service (Frankfurt) on a Supabase
+PostgreSQL database (session pooler, Frankfurt), first deployed in M3 week 9. Health check:
+[`/actuator/health`](https://sitelog-aq2e.onrender.com/actuator/health). Sign in with the
+[demo accounts](#demo-accounts-and-permissions). If the page takes a while, the service is waking
+up (see Cold start below).
 
 ### Cold start
 
@@ -389,7 +394,7 @@ HikariCP defaults (10 connections, 30 s timeout).
 
 | Setting | Value | Why |
 |---|---|---|
-| `maximum-pool-size` | `${DB_POOL_SIZE:5}` | In production the app connects through the Supabase Supavisor pooler in **session mode**, where every Hikari connection holds one server connection for as long as it is open. The free plan's pool is small and shared with the Supabase dashboard and any other client (check the pooler limit of the project's plan in the Supabase dashboard). 5 leaves headroom and is enough for one Render instance: transactions are short, and only one scheduled job will run at a time. `DB_POOL_SIZE` changes it without a new build. |
+| `maximum-pool-size` | `${DB_POOL_SIZE:5}` | In production the app connects through the Supabase Supavisor pooler in **session mode**, where every Hikari connection holds one server connection for as long as it is open. On the project's free plan (Nano compute) the pool size is 15 server connections per user + database, shared with the Supabase dashboard and any other client ([values read in the dashboard](docs/operations/deployment.md)). 5 leaves headroom, also while an old and a new instance overlap during a deploy (10 at most), and is enough for one Render instance: transactions are short, and only one scheduled job will run at a time. `DB_POOL_SIZE` changes it without a new build. |
 | `minimum-idle` | `2` | Two warm connections; the free instance serves little traffic. |
 | `connection-timeout` | `10000` (10 s) | Fails fast when the pool is exhausted or the Supabase project is paused, so the request ends with an error page instead of hanging for 30 s. |
 | `idle-timeout` | `300000` (5 min) | Idle connections above `minimum-idle` are released. |

@@ -50,7 +50,7 @@ flowchart TB
 | Element | Status |
 |---|---|
 | Four roles | Implemented (M3 week 9): form login with the users of `app_user`, one role each ([section 8](#8-security)). |
-| Supabase PostgreSQL | Chosen in M1 ([ADR-0001](../adr/0001-persistence-model.md)); `prod` profile ready, first deployment in M3 ([section 9](#9-deployment)). |
+| Supabase PostgreSQL | Chosen in M1 ([ADR-0001](../adr/0001-persistence-model.md)); `prod` profile, deployed in M3 week 9 ([section 9](#9-deployment)). |
 | Anthropic API | Chosen in M1; AI feature in M3 (ADR-0002). Called only when profile `ai` is active. |
 | GitHub Pages | Implemented: `docs.yml` publishes this site. It is not the application deployment. |
 
@@ -88,8 +88,8 @@ flowchart LR
 
 | Container | Technology | Status |
 |---|---|---|
-| SiteLog application | Spring Boot 4.1 jar in a Docker image on Render | Multi-stage `Dockerfile` and `render.yaml` implemented (M3 week 9); runs locally with `docker compose up`. First deployment on Render: M3. |
-| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V6` ([Database schema](./database.md)). Supabase: connection settings in `application-prod.yml`, first deployment M3. |
+| SiteLog application | Spring Boot 4.1 jar in a Docker image on Render | Multi-stage `Dockerfile` and `render.yaml` implemented (M3 week 9); runs locally with `docker compose up`. Deployed on Render (https://sitelog-aq2e.onrender.com) in M3 week 9. |
+| Database | PostgreSQL 17 — `postgres:17-alpine` locally and in tests, Supabase 17.11 in production | Local + tests implemented (M1). Domain schema: implemented, migrations `V2`–`V6` ([Database schema](./database.md)). Supabase: connection settings in `application-prod.yml`, deployed in M3 week 9 (session pooler). |
 | AI provider | Anthropic Claude through Spring AI 2.x | M3. |
 | CI | GitHub Actions `ci.yml` (`./mvnw verify`), `docs.yml` (this site) | Implemented (M1). |
 
@@ -486,7 +486,7 @@ sequenceDiagram
 
 ## 9. Deployment
 
-Deployment setup implemented in M3 week 9; the first deployment on Render follows in M3. Full
+Deployment setup and first deployment on Render (https://sitelog-aq2e.onrender.com) in M3 week 9. Full
 procedure, environment variables, redeploy and the wake-up steps before a demo:
 [Deployment (Render + Supabase)](../operations/deployment.md).
 
