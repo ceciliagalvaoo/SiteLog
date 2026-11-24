@@ -24,6 +24,9 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * &lt;p&gt;Limited to the application's own controllers: Spring Boot's {@code BasicErrorController}
  * (the 403 / 404 / 500 pages) must render even when the database is the reason for the error, so
  * the error pages never query it (the layout treats every attribute as optional).
+ *
+ * &lt;p&gt;An anonymous request (the login page) gets none of these attributes: there is no user to
+ * show, and the notification and incident services require a signed-in caller.
  */
 @ControllerAdvice(basePackages = &quot;hr.algebra.sitelog&quot;)
 public class LayoutModelAdvice {
@@ -35,19 +38,21 @@ public class LayoutModelAdvice {
 	private final IncidentStatsService incidentStats;
 
 	public LayoutModelAdvice(CurrentUserProvider currentUserProvider, NotificationService notificationService,
-<span class="fc" id="L38">			IncidentStatsService incidentStats) {</span>
-<span class="fc" id="L39">		this.currentUserProvider = currentUserProvider;</span>
-<span class="fc" id="L40">		this.notificationService = notificationService;</span>
-<span class="fc" id="L41">		this.incidentStats = incidentStats;</span>
-<span class="fc" id="L42">	}</span>
+<span class="fc" id="L41">			IncidentStatsService incidentStats) {</span>
+<span class="fc" id="L42">		this.currentUserProvider = currentUserProvider;</span>
+<span class="fc" id="L43">		this.notificationService = notificationService;</span>
+<span class="fc" id="L44">		this.incidentStats = incidentStats;</span>
+<span class="fc" id="L45">	}</span>
 
 	@ModelAttribute
 	public void layout(Model model) {
-<span class="fc" id="L46">		model.addAttribute(&quot;currentUser&quot;, currentUserProvider.currentUser());</span>
-<span class="fc" id="L47">		model.addAttribute(&quot;unreadCount&quot;, notificationService.unreadCount());</span>
-<span class="fc" id="L48">		model.addAttribute(&quot;notifications&quot;, notificationService.latestUnread());</span>
-<span class="fc" id="L49">		model.addAttribute(&quot;openIncidentCount&quot;, incidentStats.openIncidentCount());</span>
-<span class="fc" id="L50">	}</span>
+<span class="fc" id="L49">		currentUserProvider.findCurrentUser().ifPresent(user -&gt; {</span>
+<span class="fc" id="L50">			model.addAttribute(&quot;currentUser&quot;, user);</span>
+<span class="fc" id="L51">			model.addAttribute(&quot;unreadCount&quot;, notificationService.unreadCount());</span>
+<span class="fc" id="L52">			model.addAttribute(&quot;notifications&quot;, notificationService.latestUnread());</span>
+<span class="fc" id="L53">			model.addAttribute(&quot;openIncidentCount&quot;, incidentStats.openIncidentCount());</span>
+<span class="fc" id="L54">		});</span>
+<span class="fc" id="L55">	}</span>
 
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

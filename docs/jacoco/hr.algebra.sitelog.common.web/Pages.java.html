@@ -22,7 +22,7 @@ public final class Pages {
 <span class="fc" id="L22">		Sort sort = Sort.by(requested.getSort().stream()</span>
 <span class="fc" id="L23">			.filter(order -&gt; sortable.contains(order.getProperty()))</span>
 <span class="fc" id="L24">			.toList());</span>
-<span class="pc bpc" id="L25" title="1 of 2 branches missed.">		if (sort.isUnsorted()) {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">		if (sort.isUnsorted()) {</span>
 <span class="fc" id="L26">			sort = fallback;</span>
 		}
 <span class="fc" id="L28">		int size = Math.min(Math.max(requested.getPageSize(), 1), MAX_SIZE);</span>

@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.user.service</a> &gt; <span class="el_source">UserService.java</span></div><h1>UserService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.user.service;
+
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.InvalidTransitionException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.site.domain.Site;
+import hr.algebra.sitelog.site.repository.SiteRepository;
+import hr.algebra.sitelog.user.domain.AppUser;
+import hr.algebra.sitelog.user.domain.Role;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import hr.algebra.sitelog.user.repository.RoleRepository;
+
+/**
+ * User administration (Admin) and the user's own profile.
+ *
+ * &lt;p&gt;Admin ({@code hasRole('ADMIN')} on the class):
+ * &lt;ul&gt;
+ * &lt;li&gt;create a user with an initial password (BCrypt hash, never stored in clear);&lt;/li&gt;
+ * &lt;li&gt;edit e-mail, name, role, language; activate / deactivate. Users are never deleted: logs,
+ * incidents and audit rows point to them. An inactive user cannot sign in.&lt;/li&gt;
+ * &lt;li&gt;Admins cannot lock themselves out: no deactivating and no role change of their own
+ * account.&lt;/li&gt;
+ * &lt;li&gt;assign sites to a site manager ({@code site.manager_id}). A site always has exactly one
+ * manager, so a site is taken away from a manager only by assigning it to another one; for the
+ * same reason a user who still manages sites keeps the SITE_MANAGER role.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * Every signed-in user ({@code isAuthenticated()} on the method): own profile, preferred
+ * language and password change (current password required, confirmation, length policy).
+ */
+@Service
+@Transactional(readOnly = true)
+@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+public class UserService {
+
+<span class="fc" id="L52">	public static final List&lt;String&gt; LANGUAGES = List.of(&quot;en&quot;, &quot;hr&quot;);</span>
+
+	public static final String EMAIL_DUPLICATE = &quot;validation.user.email.duplicate&quot;;
+
+	public static final String LANGUAGE_INVALID = &quot;validation.user.language.invalid&quot;;
+
+	public static final String SELF_DEACTIVATE = &quot;validation.user.self.deactivate&quot;;
+
+	public static final String SELF_ROLE = &quot;validation.user.self.role&quot;;
+
+	public static final String ROLE_MANAGES_SITES = &quot;validation.user.role.managesSites&quot;;
+
+	public static final String SITES_NOT_MANAGER = &quot;validation.user.sites.notManager&quot;;
+
+	public static final String SITES_UNASSIGN = &quot;validation.user.sites.unassign&quot;;
+
+	public static final String SELF_DEACTIVATE_FLASH = &quot;user.flash.selfDeactivate&quot;;
+
+	public static final String CURRENT_PASSWORD_WRONG = &quot;validation.password.current.wrong&quot;;
+
+	public static final String CONFIRM_MISMATCH = &quot;validation.password.confirm.mismatch&quot;;
+
+	public static final String SAME_AS_CURRENT = &quot;validation.password.sameAsCurrent&quot;;
+
+	private final AppUserRepository users;
+
+	private final RoleRepository roles;
+
+	private final SiteRepository sites;
+
+	private final PasswordEncoder passwordEncoder;
+
+	private final CurrentUserProvider currentUser;
+
+	public UserService(AppUserRepository users, RoleRepository roles, SiteRepository sites,
+<span class="fc" id="L87">			PasswordEncoder passwordEncoder, CurrentUserProvider currentUser) {</span>
+<span class="fc" id="L88">		this.users = users;</span>
+<span class="fc" id="L89">		this.roles = roles;</span>
+<span class="fc" id="L90">		this.sites = sites;</span>
+<span class="fc" id="L91">		this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L92">		this.currentUser = currentUser;</span>
+<span class="fc" id="L93">	}</span>
+
+	// ------------------------------------------------------------------ Admin
+
+	/** Users list with an optional filter on name or e-mail; the role comes in the same query. */
+	public Page&lt;UserListItem&gt; list(String filter, Pageable pageable) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">		String text = filter == null ? &quot;&quot; : filter.trim();</span>
+<span class="fc" id="L100">		return users.searchWithRole(text, pageable).map(UserListItem::of);</span>
+	}
+
+	public UserView get(Long id) {
+<span class="fc" id="L104">		return toView(loadWithRole(id));</span>
+	}
+
+	/** Creates an active user; returns the new id. */
+	@Transactional
+	public Long create(UserCommand command) {
+<span class="fc" id="L110">		String email = normalizeEmail(command.email());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">		if (users.existsByEmailIgnoreCase(email)) {</span>
+<span class="fc" id="L112">			throw new InvalidFieldException(&quot;email&quot;, EMAIL_DUPLICATE);</span>
+		}
+<span class="fc" id="L114">		checkLanguage(command.preferredLanguage());</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">		if (!PasswordPolicy.isValid(command.initialPassword())) {</span>
+<span class="fc" id="L116">			throw new InvalidFieldException(&quot;initialPassword&quot;, PasswordPolicy.INVALID);</span>
+		}
+<span class="fc" id="L118">		AppUser user = new AppUser(email, passwordEncoder.encode(command.initialPassword()),</span>
+<span class="fc" id="L119">				command.fullName().trim(), loadRole(command.role()));</span>
+<span class="fc" id="L120">		user.setPreferredLanguage(command.preferredLanguage());</span>
+<span class="fc" id="L121">		return users.save(user).getId();</span>
+	}
+
+	/** Changes the account; {@code initialPassword} of the command is ignored here. */
+	@Transactional
+	public void update(Long id, UserCommand command) {
+<span class="fc" id="L127">		AppUser user = loadWithRole(id);</span>
+<span class="fc" id="L128">		String email = normalizeEmail(command.email());</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">		if (users.existsByEmailIgnoreCaseAndIdNot(email, id)) {</span>
+<span class="fc" id="L130">			throw new InvalidFieldException(&quot;email&quot;, EMAIL_DUPLICATE);</span>
+		}
+<span class="fc" id="L132">		checkLanguage(command.preferredLanguage());</span>
+<span class="fc" id="L133">		boolean self = id.equals(currentUser.currentUserId());</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">		boolean roleChanged = user.getRole().getName() != command.role();</span>
+<span class="fc bfc" id="L135" title="All 4 branches covered.">		if (self &amp;&amp; !command.active()) {</span>
+<span class="fc" id="L136">			throw new InvalidFieldException(&quot;active&quot;, SELF_DEACTIVATE);</span>
+		}
+<span class="pc bpc" id="L138" title="1 of 4 branches missed.">		if (self &amp;&amp; roleChanged) {</span>
+<span class="fc" id="L139">			throw new InvalidFieldException(&quot;role&quot;, SELF_ROLE);</span>
+		}
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">		if (roleChanged &amp;&amp; user.getRole().getName() == RoleName.SITE_MANAGER</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">				&amp;&amp; !sites.findByManager_IdOrderByNameAsc(id).isEmpty()) {</span>
+<span class="fc" id="L143">			throw new InvalidFieldException(&quot;role&quot;, ROLE_MANAGES_SITES);</span>
+		}
+<span class="fc" id="L145">		user.setEmail(email);</span>
+<span class="fc" id="L146">		user.setFullName(command.fullName().trim());</span>
+<span class="fc" id="L147">		user.setPreferredLanguage(command.preferredLanguage());</span>
+<span class="fc" id="L148">		user.setActive(command.active());</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">		if (roleChanged) {</span>
+<span class="fc" id="L150">			user.setRole(loadRole(command.role()));</span>
+		}
+<span class="fc" id="L152">	}</span>
+
+	/** Activate / deactivate from the list; returns the user's name for the flash message. */
+	@Transactional
+	public String setActive(Long id, boolean active) {
+<span class="fc" id="L157">		AppUser user = loadWithRole(id);</span>
+<span class="fc bfc" id="L158" title="All 4 branches covered.">		if (!active &amp;&amp; id.equals(currentUser.currentUserId())) {</span>
+<span class="fc" id="L159">			throw new InvalidTransitionException(SELF_DEACTIVATE_FLASH, &quot;user &quot; + id + &quot; cannot deactivate itself&quot;);</span>
+		}
+<span class="fc" id="L161">		user.setActive(active);</span>
+<span class="fc" id="L162">		return user.getFullName();</span>
+	}
+
+	/** Every site with its current manager, the ones of this user checked (user form). */
+	public List&lt;SiteAssignmentOption&gt; siteOptions(Long userId) {
+<span class="fc" id="L167">		return sites.findAllWithManager(Pageable.unpaged(Sort.by(&quot;name&quot;))).stream()</span>
+<span class="fc" id="L168">			.map(site -&gt; new SiteAssignmentOption(site.getId(), site.getCode(), site.getName(),</span>
+<span class="fc" id="L169">					site.getManager().getFullName(), site.getManager().getId().equals(userId)))</span>
+<span class="fc" id="L170">			.toList();</span>
+	}
+
+	/**
+	 * Makes the user the manager of the given sites (the sites move from their previous
+	 * manager). The user must be an active SITE_MANAGER, and every site the user manages now
+	 * must still be in the list: a site cannot be left without a manager.
+	 */
+	@Transactional
+	public void assignSites(Long userId, Collection&lt;Long&gt; siteIds) {
+<span class="fc" id="L180">		AppUser user = loadWithRole(userId);</span>
+<span class="fc bfc" id="L181" title="All 4 branches covered.">		if (!user.isActive() || user.getRole().getName() != RoleName.SITE_MANAGER) {</span>
+<span class="fc" id="L182">			throw new InvalidFieldException(&quot;siteIds&quot;, SITES_NOT_MANAGER);</span>
+		}
+<span class="fc bfc" id="L184" title="All 2 branches covered.">		Set&lt;Long&gt; wanted = siteIds == null ? Set.of() : new HashSet&lt;&gt;(siteIds);</span>
+<span class="fc" id="L185">		boolean dropsASite = sites.findByManager_IdOrderByNameAsc(userId).stream()</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">			.anyMatch(site -&gt; !wanted.contains(site.getId()));</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">		if (dropsASite) {</span>
+<span class="fc" id="L188">			throw new InvalidFieldException(&quot;siteIds&quot;, SITES_UNASSIGN);</span>
+		}
+<span class="fc" id="L190">		Map&lt;Long, Site&gt; found = sites.findAllById(wanted).stream()</span>
+<span class="fc" id="L191">			.collect(Collectors.toMap(Site::getId, Function.identity()));</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">		for (Long siteId : wanted) {</span>
+<span class="fc" id="L193">			Site site = found.get(siteId);</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">			if (site == null) {</span>
+<span class="fc" id="L195">				throw new NotFoundException(Site.class, siteId);</span>
+			}
+<span class="fc" id="L197">			site.setManager(user);</span>
+<span class="fc" id="L198">		}</span>
+<span class="fc" id="L199">	}</span>
+
+	// ------------------------------------------------------------------ own profile
+
+	@PreAuthorize(&quot;isAuthenticated()&quot;)
+	public UserView getProfile() {
+<span class="fc" id="L205">		return toView(loadWithRole(currentUser.currentUserId()));</span>
+	}
+
+	@PreAuthorize(&quot;isAuthenticated()&quot;)
+	@Transactional
+	public void updateProfile(ProfileCommand command) {
+<span class="fc" id="L211">		checkLanguage(command.preferredLanguage());</span>
+<span class="fc" id="L212">		AppUser user = loadWithRole(currentUser.currentUserId());</span>
+<span class="fc" id="L213">		user.setFullName(command.fullName().trim());</span>
+<span class="fc" id="L214">		user.setPreferredLanguage(command.preferredLanguage());</span>
+<span class="fc" id="L215">	}</span>
+
+	/**
+	 * Own password change. Field errors name the form field: wrong current password, new password
+	 * outside the policy, same as the current one, confirmation different.
+	 */
+	@PreAuthorize(&quot;isAuthenticated()&quot;)
+	@Transactional
+	public void changePassword(PasswordChangeCommand command) {
+<span class="fc" id="L224">		AppUser user = loadWithRole(currentUser.currentUserId());</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">		if (command.currentPassword() == null</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">				|| !passwordEncoder.matches(command.currentPassword(), user.getPasswordHash())) {</span>
+<span class="fc" id="L227">			throw new InvalidFieldException(&quot;currentPassword&quot;, CURRENT_PASSWORD_WRONG);</span>
+		}
+<span class="fc bfc" id="L229" title="All 2 branches covered.">		if (!PasswordPolicy.isValid(command.newPassword())) {</span>
+<span class="fc" id="L230">			throw new InvalidFieldException(&quot;newPassword&quot;, PasswordPolicy.INVALID);</span>
+		}
+<span class="fc bfc" id="L232" title="All 2 branches covered.">		if (!command.newPassword().equals(command.confirmPassword())) {</span>
+<span class="fc" id="L233">			throw new InvalidFieldException(&quot;confirmPassword&quot;, CONFIRM_MISMATCH);</span>
+		}
+<span class="fc bfc" id="L235" title="All 2 branches covered.">		if (command.newPassword().equals(command.currentPassword())) {</span>
+<span class="fc" id="L236">			throw new InvalidFieldException(&quot;newPassword&quot;, SAME_AS_CURRENT);</span>
+		}
+<span class="fc" id="L238">		user.setPasswordHash(passwordEncoder.encode(command.newPassword()));</span>
+<span class="fc" id="L239">	}</span>
+
+	// ------------------------------------------------------------------ helpers
+
+	private AppUser loadWithRole(Long id) {
+<span class="fc" id="L244">		return users.findWithRoleById(id).orElseThrow(() -&gt; new NotFoundException(AppUser.class, id));</span>
+	}
+
+	private Role loadRole(RoleName name) {
+<span class="fc" id="L248">		return roles.findByName(name).orElseThrow(() -&gt; new InvalidFieldException(&quot;role&quot;, &quot;validation.user.role.required&quot;));</span>
+	}
+
+	private static String normalizeEmail(String email) {
+<span class="fc" id="L252">		return email.trim().toLowerCase();</span>
+	}
+
+	private static void checkLanguage(String language) {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">		if (!LANGUAGES.contains(language)) {</span>
+<span class="fc" id="L257">			throw new InvalidFieldException(&quot;preferredLanguage&quot;, LANGUAGE_INVALID);</span>
+		}
+<span class="fc" id="L259">	}</span>
+
+	private UserView toView(AppUser user) {
+<span class="fc bfc" id="L262" title="All 2 branches covered.">		List&lt;ManagedSite&gt; managed = user.getRole().getName() == RoleName.SITE_MANAGER</span>
+<span class="fc" id="L263">				? sites.findByManager_IdOrderByNameAsc(user.getId()).stream().map(ManagedSite::of).toList()</span>
+<span class="fc" id="L264">				: List.of();</span>
+<span class="fc" id="L265">		return new UserView(user.getId(), user.getEmail(), user.getFullName(), user.getRole().getName(),</span>
+<span class="fc" id="L266">				user.getPreferredLanguage(), user.isActive(), user.getId().equals(currentUser.currentUserId()),</span>
+				managed);
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

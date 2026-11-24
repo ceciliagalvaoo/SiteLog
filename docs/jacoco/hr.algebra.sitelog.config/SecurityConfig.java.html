@@ -2,28 +2,79 @@
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.LocaleResolver;
+
+import hr.algebra.sitelog.user.security.PreferredLanguageLoginSuccessHandler;
 
 /**
- * Temporary security setup for the project skeleton: the health check is public
- * (used by docker and the hosting platform), everything else requires a login.
- * Roles, users and method security replace this in a later milestone.
+ * Web security (URL level). The fine-grained rules - which role may call which operation, and
+ * &quot;only on the manager's own site&quot; - are {@code @PreAuthorize} annotations on the services
+ * ({@code MethodSecurityConfig}), so they also protect the REST API and any other caller.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Public&lt;/b&gt;: the login page, static assets of the layout, {@code /actuator/health}
+ * (Docker and Render health checks) and {@code /error}.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;{@code /admin/**}&lt;/b&gt;: ADMIN only (user administration) - a second line of defence
+ * next to the service annotations.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Crew forms&lt;/b&gt; ({@code GET /crews/new}, {@code /crews/{id}/edit}) and every crew POST:
+ * ADMIN only. The crew list stays readable by everyone.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Everything else&lt;/b&gt;: any signed-in user.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Form login&lt;/b&gt; on our own page {@code GET /login}; the form posts e-mail + password to
+ * {@code POST /login}. Users come from {@code app_user} ({@code AppUserDetailsService}),
+ * passwords are BCrypt hashes. A failed or inactive login goes back to {@code /login?error}.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Logout&lt;/b&gt; is {@code POST /logout} with the CSRF token (a GET link cannot log anyone
+ * out); it invalidates the session and goes to {@code /login?logout}.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;CSRF&lt;/b&gt; stays on (default): every Thymeleaf form with {@code th:action} gets the
+ * hidden {@code _csrf} field automatically.&lt;/li&gt;
+ * &lt;/ul&gt;
  */
-@Configuration
-<span class="fc" id="L15">public class SecurityConfig {</span>
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L37">public class SecurityConfig {</span>
+
+	public static final String LOGIN_PAGE = &quot;/login&quot;;
 
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-<span class="fc" id="L19">		http</span>
-<span class="fc" id="L20">			.authorizeHttpRequests(auth -&gt; auth</span>
-<span class="fc" id="L21">				.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;).permitAll()</span>
+	SecurityFilterChain securityFilterChain(HttpSecurity http, LocaleResolver localeResolver) throws Exception {
+<span class="fc" id="L43">		http</span>
+<span class="fc" id="L44">			.authorizeHttpRequests(auth -&gt; auth</span>
+<span class="fc" id="L45">				.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;).permitAll()</span>
 				// static assets of the layout (also needed by the login page)
-<span class="fc" id="L23">				.requestMatchers(&quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/img/**&quot;, &quot;/favicon.ico&quot;).permitAll()</span>
-<span class="fc" id="L24">				.anyRequest().authenticated())</span>
-<span class="fc" id="L25">			.formLogin(Customizer.withDefaults());</span>
-<span class="fc" id="L26">		return http.build();</span>
+<span class="fc" id="L47">				.requestMatchers(&quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/img/**&quot;, &quot;/favicon.ico&quot;).permitAll()</span>
+<span class="fc" id="L48">				.requestMatchers(LOGIN_PAGE, &quot;/error&quot;).permitAll()</span>
+<span class="fc" id="L49">				.requestMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+				// crew forms and crew writes: refused before binding/validation, so a non-admin never
+				// sees the form (not even re-rendered with errors); the service checks the writes again
+<span class="fc" id="L52">				.requestMatchers(HttpMethod.GET, &quot;/crews/new&quot;, &quot;/crews/*/edit&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L53">				.requestMatchers(HttpMethod.POST, &quot;/crews&quot;, &quot;/crews/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L54">				.anyRequest().authenticated())</span>
+<span class="fc" id="L55">			.formLogin(form -&gt; form</span>
+<span class="fc" id="L56">				.loginPage(LOGIN_PAGE)</span>
+<span class="fc" id="L57">				.usernameParameter(&quot;email&quot;)</span>
+<span class="fc" id="L58">				.passwordParameter(&quot;password&quot;)</span>
+<span class="fc" id="L59">				.successHandler(new PreferredLanguageLoginSuccessHandler(localeResolver))</span>
+<span class="fc" id="L60">				.failureUrl(LOGIN_PAGE + &quot;?error&quot;)</span>
+<span class="fc" id="L61">				.permitAll())</span>
+<span class="fc" id="L62">			.logout(logout -&gt; logout</span>
+<span class="fc" id="L63">				.logoutUrl(&quot;/logout&quot;)</span>
+<span class="fc" id="L64">				.logoutSuccessUrl(LOGIN_PAGE + &quot;?logout&quot;)</span>
+<span class="fc" id="L65">				.invalidateHttpSession(true)</span>
+<span class="fc" id="L66">				.deleteCookies(&quot;JSESSIONID&quot;)</span>
+<span class="fc" id="L67">				.permitAll());</span>
+<span class="fc" id="L68">		return http.build();</span>
+	}
+
+	/**
+	 * BCrypt with the default strength (10, about 2^10 hashing rounds): slow enough to make
+	 * guessing expensive, fast enough for a login. The seed users in V4 use the same algorithm.
+	 */
+	@Bean
+	PasswordEncoder passwordEncoder() {
+<span class="fc" id="L77">		return new BCryptPasswordEncoder();</span>
 	}
 
 }

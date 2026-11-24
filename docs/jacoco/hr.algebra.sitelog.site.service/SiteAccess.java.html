@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SiteAccess.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.site.service</a> &gt; <span class="el_source">SiteAccess.java</span></div><h1>SiteAccess.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.site.service;
+
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.site.repository.SiteRepository;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * The &quot;own site&quot; rule of the SITE_MANAGER, used in {@code @PreAuthorize} expressions as
+ * {@code @siteAccess}: a site manager changes daily logs (and their work entries and crew rows)
+ * only on the sites whose {@code site.manager_id} is him or her. The role itself is checked in
+ * the expression ({@code hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)}), this
+ * bean only answers &quot;is it the user's site?&quot;. Also usable in templates:
+ * {@code sec:authorize=&quot;${@siteAccess.canManageSite(site.id)}&quot;}.
+ *
+ * &lt;p&gt;An id that does not exist answers {@code true}: the service then throws its
+ * {@code NotFoundException} and the user sees the normal 404 page instead of a misleading 403.
+ * Nothing is revealed by that - every signed-in user may read every site.
+ */
+@Component(&quot;siteAccess&quot;)
+@Transactional(readOnly = true)
+public class SiteAccess {
+
+	private final SiteRepository sites;
+
+	private final DailyLogRepository dailyLogs;
+
+	private final CurrentUserProvider currentUser;
+
+<span class="fc" id="L32">	public SiteAccess(SiteRepository sites, DailyLogRepository dailyLogs, CurrentUserProvider currentUser) {</span>
+<span class="fc" id="L33">		this.sites = sites;</span>
+<span class="fc" id="L34">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L35">		this.currentUser = currentUser;</span>
+<span class="fc" id="L36">	}</span>
+
+	/** True when the signed-in user is the manager of the site (or the site does not exist). */
+	public boolean canManageSite(Long siteId) {
+<span class="fc bfc" id="L40" title="All 2 branches covered.">		if (siteId == null) {</span>
+<span class="fc" id="L41">			return false;</span>
+		}
+<span class="fc" id="L43">		Long userId = currentUser.currentUserId();</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">		return sites.existsByIdAndManager_Id(siteId, userId) || !sites.existsById(siteId);</span>
+	}
+
+	/** True when the signed-in user manages the site of the daily log (or the log does not exist). */
+	public boolean canManageLog(Long dailyLogId) {
+<span class="fc bfc" id="L49" title="All 2 branches covered.">		if (dailyLogId == null) {</span>
+<span class="fc" id="L50">			return false;</span>
+		}
+<span class="fc" id="L52">		Long userId = currentUser.currentUserId();</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">		return dailyLogs.existsByIdAndSite_Manager_Id(dailyLogId, userId) || !dailyLogs.existsById(dailyLogId);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

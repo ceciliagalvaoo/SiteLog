@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AppUserPrincipal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.user.security</a> &gt; <span class="el_source">AppUserPrincipal.java</span></div><h1>AppUserPrincipal.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.user.security;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.security.core.CredentialsContainer;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import hr.algebra.sitelog.user.domain.AppUser;
+import hr.algebra.sitelog.user.domain.RoleName;
+
+/**
+ * The signed-in user as Spring Security keeps it in the HTTP session. A copy of the
+ * {@code app_user} row taken at login (never the JPA entity: the session outlives the
+ * persistence context).
+ *
+ * &lt;p&gt;Authority: {@code ROLE_&lt;role&gt;} (one role per user), so {@code hasRole('ADMIN')} works in
+ * {@code @PreAuthorize} and in {@code sec:authorize}. {@link #isEnabled()} is the {@code active}
+ * flag: the authentication provider refuses a disabled user before the password is checked.
+ */
+public final class AppUserPrincipal implements UserDetails, CredentialsContainer {
+
+	private static final long serialVersionUID = 1L;
+
+	private final Long id;
+
+	private final String email;
+
+	private String passwordHash;
+
+	private final String fullName;
+
+	private final RoleName role;
+
+	private final String preferredLanguage;
+
+	private final boolean active;
+
+	public AppUserPrincipal(Long id, String email, String passwordHash, String fullName, RoleName role,
+<span class="fc" id="L43">			String preferredLanguage, boolean active) {</span>
+<span class="fc" id="L44">		this.id = id;</span>
+<span class="fc" id="L45">		this.email = email;</span>
+<span class="fc" id="L46">		this.passwordHash = passwordHash;</span>
+<span class="fc" id="L47">		this.fullName = fullName;</span>
+<span class="fc" id="L48">		this.role = role;</span>
+<span class="fc" id="L49">		this.preferredLanguage = preferredLanguage;</span>
+<span class="fc" id="L50">		this.active = active;</span>
+<span class="fc" id="L51">	}</span>
+
+	public static AppUserPrincipal of(AppUser user) {
+<span class="fc" id="L54">		return new AppUserPrincipal(user.getId(), user.getEmail(), user.getPasswordHash(), user.getFullName(),</span>
+<span class="fc" id="L55">				user.getRole().getName(), user.getPreferredLanguage(), user.isActive());</span>
+	}
+
+	public static String authority(RoleName role) {
+<span class="fc" id="L59">		return &quot;ROLE_&quot; + role.name();</span>
+	}
+
+	public Long getId() {
+<span class="fc" id="L63">		return id;</span>
+	}
+
+	public String getFullName() {
+<span class="nc" id="L67">		return fullName;</span>
+	}
+
+	public RoleName getRole() {
+<span class="nc" id="L71">		return role;</span>
+	}
+
+	public String getPreferredLanguage() {
+<span class="fc" id="L75">		return preferredLanguage;</span>
+	}
+
+	@Override
+	public Collection&lt;? extends GrantedAuthority&gt; getAuthorities() {
+<span class="fc" id="L80">		return List.of(new SimpleGrantedAuthority(authority(role)));</span>
+	}
+
+	@Override
+	public String getPassword() {
+<span class="fc" id="L85">		return passwordHash;</span>
+	}
+
+	/** The login name is the e-mail address. */
+	@Override
+	public String getUsername() {
+<span class="fc" id="L91">		return email;</span>
+	}
+
+	@Override
+	public boolean isEnabled() {
+<span class="fc" id="L96">		return active;</span>
+	}
+
+	/** Called by the authentication manager after a successful login: the hash is not kept in the session. */
+	@Override
+	public void eraseCredentials() {
+<span class="fc" id="L102">		passwordHash = null;</span>
+<span class="fc" id="L103">	}</span>
+
+	@Override
+	public boolean equals(Object other) {
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">		return other instanceof AppUserPrincipal principal &amp;&amp; Objects.equals(id, principal.id);</span>
+	}
+
+	@Override
+	public int hashCode() {
+<span class="fc" id="L112">		return Objects.hashCode(id);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="fc" id="L117">		return &quot;AppUserPrincipal[id=&quot; + id + &quot;, email=&quot; + email + &quot;, role=&quot; + role + &quot;]&quot;;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -2,6 +2,7 @@
 
 import java.util.EnumSet;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,19 +15,20 @@ import hr.algebra.sitelog.incident.repository.IncidentRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
 public class IncidentStatsService {
 
 	/** Not yet signed off: still needs someone's attention. */
-<span class="fc" id="L20">	public static final EnumSet&lt;IncidentStatus&gt; OPEN = EnumSet.of(IncidentStatus.REPORTED, IncidentStatus.UNDER_REVIEW);</span>
+<span class="fc" id="L22">	public static final EnumSet&lt;IncidentStatus&gt; OPEN = EnumSet.of(IncidentStatus.REPORTED, IncidentStatus.UNDER_REVIEW);</span>
 
 	private final IncidentRepository incidents;
 
-<span class="fc" id="L24">	public IncidentStatsService(IncidentRepository incidents) {</span>
-<span class="fc" id="L25">		this.incidents = incidents;</span>
-<span class="fc" id="L26">	}</span>
+<span class="fc" id="L26">	public IncidentStatsService(IncidentRepository incidents) {</span>
+<span class="fc" id="L27">		this.incidents = incidents;</span>
+<span class="fc" id="L28">	}</span>
 
 	public long openIncidentCount() {
-<span class="fc" id="L29">		return incidents.countByStatusIn(OPEN);</span>
+<span class="fc" id="L31">		return incidents.countByStatusIn(OPEN);</span>
 	}
 
 }

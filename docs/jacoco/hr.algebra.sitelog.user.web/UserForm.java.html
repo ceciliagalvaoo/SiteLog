@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserForm.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.user.web</a> &gt; <span class="el_source">UserForm.java</span></div><h1>UserForm.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.user.web;
+
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.service.UserCommand;
+import hr.algebra.sitelog.user.service.UserView;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
+/** Backing object of {@code user/form} when editing a user ({@link NewUserForm} adds the initial password). */
+<span class="fc" id="L13">public class UserForm {</span>
+
+	@NotBlank(message = &quot;{validation.user.email.required}&quot;)
+	@Email(message = &quot;{validation.user.email.invalid}&quot;)
+	@Size(max = 255, message = &quot;{validation.size.max}&quot;)
+	private String email;
+
+	@NotBlank(message = &quot;{validation.user.fullName.required}&quot;)
+	@Size(max = 150, message = &quot;{validation.size.max}&quot;)
+	private String fullName;
+
+	@NotNull(message = &quot;{validation.user.role.required}&quot;)
+	private RoleName role;
+
+<span class="fc" id="L27">	@NotBlank(message = &quot;{validation.user.language.invalid}&quot;)</span>
+	@Pattern(regexp = &quot;en|hr&quot;, message = &quot;{validation.user.language.invalid}&quot;)
+	private String preferredLanguage = &quot;en&quot;;
+
+<span class="fc" id="L31">	private boolean active = true;</span>
+
+	public static UserForm from(UserView user) {
+<span class="fc" id="L34">		UserForm form = new UserForm();</span>
+<span class="fc" id="L35">		form.email = user.email();</span>
+<span class="fc" id="L36">		form.fullName = user.fullName();</span>
+<span class="fc" id="L37">		form.role = user.role();</span>
+<span class="fc" id="L38">		form.preferredLanguage = user.preferredLanguage();</span>
+<span class="fc" id="L39">		form.active = user.active();</span>
+<span class="fc" id="L40">		return form;</span>
+	}
+
+	public UserCommand toCommand() {
+<span class="fc" id="L44">		return new UserCommand(email, fullName, role, preferredLanguage, active, null);</span>
+	}
+
+	public String getEmail() {
+<span class="fc" id="L48">		return email;</span>
+	}
+
+	public void setEmail(String email) {
+<span class="fc" id="L52">		this.email = email;</span>
+<span class="fc" id="L53">	}</span>
+
+	public String getFullName() {
+<span class="fc" id="L56">		return fullName;</span>
+	}
+
+	public void setFullName(String fullName) {
+<span class="fc" id="L60">		this.fullName = fullName;</span>
+<span class="fc" id="L61">	}</span>
+
+	public RoleName getRole() {
+<span class="fc" id="L64">		return role;</span>
+	}
+
+	public void setRole(RoleName role) {
+<span class="fc" id="L68">		this.role = role;</span>
+<span class="fc" id="L69">	}</span>
+
+	public String getPreferredLanguage() {
+<span class="fc" id="L72">		return preferredLanguage;</span>
+	}
+
+	public void setPreferredLanguage(String preferredLanguage) {
+<span class="fc" id="L76">		this.preferredLanguage = preferredLanguage;</span>
+<span class="fc" id="L77">	}</span>
+
+	public boolean isActive() {
+<span class="fc" id="L80">		return active;</span>
+	}
+
+	public void setActive(boolean active) {
+<span class="fc" id="L84">		this.active = active;</span>
+<span class="fc" id="L85">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -24,11 +24,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 	static String currentUsername() {
 <span class="fc" id="L26">		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();</span>
-<span class="pc bpc" id="L27" title="5 of 6 branches missed.">		if (authentication == null || !authentication.isAuthenticated()</span>
+<span class="pc bpc" id="L27" title="2 of 6 branches missed.">		if (authentication == null || !authentication.isAuthenticated()</span>
 				|| authentication instanceof AnonymousAuthenticationToken) {
 <span class="fc" id="L29">			return SYSTEM_USER;</span>
 		}
-<span class="nc" id="L31">		return authentication.getName();</span>
+<span class="fc" id="L31">		return authentication.getName();</span>
 	}
 
 }

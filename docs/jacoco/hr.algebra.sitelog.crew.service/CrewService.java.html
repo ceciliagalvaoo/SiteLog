@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +18,8 @@ import hr.algebra.sitelog.dailylog.repository.CrewAssignmentRepository;
 import hr.algebra.sitelog.incident.repository.IncidentRepository;
 
 /**
- * Crew management (admin reference data).
+ * Crew management (admin reference data). Every signed-in user reads crews (crew selects of the
+ * daily log); create / update / delete are Admin only.
  *
  * &lt;p&gt;Delete rule (decided 07/11): a crew can only be deleted while nothing references it. A crew
  * used in a crew assignment or listed as affected by an incident is part of a record and is
@@ -26,6 +28,7 @@ import hr.algebra.sitelog.incident.repository.IncidentRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
 public class CrewService {
 
 	public static final String NAME_DUPLICATE = &quot;validation.crew.name.duplicate&quot;;
@@ -38,24 +41,24 @@ public class CrewService {
 
 	private final IncidentRepository incidents;
 
-<span class="fc" id="L41">	public CrewService(CrewRepository crews, CrewAssignmentRepository assignments, IncidentRepository incidents) {</span>
-<span class="fc" id="L42">		this.crews = crews;</span>
-<span class="fc" id="L43">		this.assignments = assignments;</span>
-<span class="fc" id="L44">		this.incidents = incidents;</span>
-<span class="fc" id="L45">	}</span>
+<span class="fc" id="L44">	public CrewService(CrewRepository crews, CrewAssignmentRepository assignments, IncidentRepository incidents) {</span>
+<span class="fc" id="L45">		this.crews = crews;</span>
+<span class="fc" id="L46">		this.assignments = assignments;</span>
+<span class="fc" id="L47">		this.incidents = incidents;</span>
+<span class="fc" id="L48">	}</span>
 
 	/** Crew management list: active and inactive, by name. */
 	public List&lt;CrewView&gt; list() {
-<span class="fc" id="L49">		return crews.findAllByOrderByNameAsc().stream().map(CrewView::of).toList();</span>
+<span class="fc" id="L52">		return crews.findAllByOrderByNameAsc().stream().map(CrewView::of).toList();</span>
 	}
 
 	public CrewView get(Long id) {
-<span class="fc" id="L53">		return CrewView.of(load(id));</span>
+<span class="fc" id="L56">		return CrewView.of(load(id));</span>
 	}
 
 	/** Options for a crew select box: active crews only. */
 	public List&lt;CrewOption&gt; activeOptions() {
-<span class="fc" id="L58">		return crews.findByActiveTrueOrderByNameAsc().stream().map(CrewOption::of).toList();</span>
+<span class="fc" id="L61">		return crews.findByActiveTrueOrderByNameAsc().stream().map(CrewOption::of).toList();</span>
 	}
 
 	/**
@@ -63,54 +66,57 @@ public class CrewService {
 	 * (now deactivated) crew already assigned on a row, but it is not offered for new rows.
 	 */
 	public List&lt;CrewOption&gt; optionsIncluding(Collection&lt;Long&gt; selectedIds) {
-<span class="fc" id="L66">		List&lt;Crew&gt; active = crews.findByActiveTrueOrderByNameAsc();</span>
-<span class="fc" id="L67">		List&lt;Long&gt; missing = selectedIds.stream()</span>
-<span class="fc bfc" id="L68" title="All 4 branches covered.">			.filter(id -&gt; id != null &amp;&amp; active.stream().noneMatch(c -&gt; c.getId().equals(id)))</span>
-<span class="fc" id="L69">			.distinct()</span>
-<span class="fc" id="L70">			.toList();</span>
-<span class="fc bfc" id="L71" title="All 2 branches covered.">		if (missing.isEmpty()) {</span>
-<span class="fc" id="L72">			return active.stream().map(CrewOption::of).toList();</span>
+<span class="fc" id="L69">		List&lt;Crew&gt; active = crews.findByActiveTrueOrderByNameAsc();</span>
+<span class="fc" id="L70">		List&lt;Long&gt; missing = selectedIds.stream()</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">			.filter(id -&gt; id != null &amp;&amp; active.stream().noneMatch(c -&gt; c.getId().equals(id)))</span>
+<span class="fc" id="L72">			.distinct()</span>
+<span class="fc" id="L73">			.toList();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">		if (missing.isEmpty()) {</span>
+<span class="fc" id="L75">			return active.stream().map(CrewOption::of).toList();</span>
 		}
-<span class="fc" id="L74">		return Stream.concat(active.stream(), crews.findAllById(missing).stream())</span>
-<span class="fc" id="L75">			.sorted(Comparator.comparing(Crew::getName, String.CASE_INSENSITIVE_ORDER))</span>
-<span class="fc" id="L76">			.map(CrewOption::of)</span>
-<span class="fc" id="L77">			.toList();</span>
+<span class="fc" id="L77">		return Stream.concat(active.stream(), crews.findAllById(missing).stream())</span>
+<span class="fc" id="L78">			.sorted(Comparator.comparing(Crew::getName, String.CASE_INSENSITIVE_ORDER))</span>
+<span class="fc" id="L79">			.map(CrewOption::of)</span>
+<span class="fc" id="L80">			.toList();</span>
 	}
 
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public Long create(CrewCommand command) {
-<span class="fc bfc" id="L82" title="All 2 branches covered.">		if (crews.existsByNameIgnoreCase(command.name())) {</span>
-<span class="fc" id="L83">			throw new InvalidFieldException(&quot;name&quot;, NAME_DUPLICATE);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">		if (crews.existsByNameIgnoreCase(command.name())) {</span>
+<span class="fc" id="L87">			throw new InvalidFieldException(&quot;name&quot;, NAME_DUPLICATE);</span>
 		}
-<span class="fc" id="L85">		Crew crew = new Crew(command.name(), command.company(), command.trade());</span>
-<span class="fc" id="L86">		crew.setActive(command.active());</span>
-<span class="fc" id="L87">		return crews.save(crew).getId();</span>
+<span class="fc" id="L89">		Crew crew = new Crew(command.name(), command.company(), command.trade());</span>
+<span class="fc" id="L90">		crew.setActive(command.active());</span>
+<span class="fc" id="L91">		return crews.save(crew).getId();</span>
 	}
 
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public void update(Long id, CrewCommand command) {
-<span class="fc" id="L92">		Crew crew = load(id);</span>
-<span class="fc bfc" id="L93" title="All 2 branches covered.">		if (crews.existsByNameIgnoreCaseAndIdNot(command.name(), id)) {</span>
-<span class="fc" id="L94">			throw new InvalidFieldException(&quot;name&quot;, NAME_DUPLICATE);</span>
+<span class="fc" id="L97">		Crew crew = load(id);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">		if (crews.existsByNameIgnoreCaseAndIdNot(command.name(), id)) {</span>
+<span class="fc" id="L99">			throw new InvalidFieldException(&quot;name&quot;, NAME_DUPLICATE);</span>
 		}
-<span class="fc" id="L96">		crew.setName(command.name());</span>
-<span class="fc" id="L97">		crew.setCompany(command.company());</span>
-<span class="fc" id="L98">		crew.setTrade(command.trade());</span>
-<span class="fc" id="L99">		crew.setActive(command.active());</span>
-<span class="fc" id="L100">	}</span>
+<span class="fc" id="L101">		crew.setName(command.name());</span>
+<span class="fc" id="L102">		crew.setCompany(command.company());</span>
+<span class="fc" id="L103">		crew.setTrade(command.trade());</span>
+<span class="fc" id="L104">		crew.setActive(command.active());</span>
+<span class="fc" id="L105">	}</span>
 
 	/** Deletes an unused crew; a crew in use must be deactivated instead. */
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public void delete(Long id) {
-<span class="fc" id="L105">		Crew crew = load(id);</span>
-<span class="fc bfc" id="L106" title="All 4 branches covered.">		if (assignments.existsByCrew_Id(id) || incidents.existsByAffectedCrews_Id(id)) {</span>
-<span class="fc" id="L107">			throw new DeletionNotAllowedException(DELETE_BLOCKED, &quot;crew &quot; + id + &quot; is in use&quot;);</span>
+<span class="fc" id="L111">		Crew crew = load(id);</span>
+<span class="fc bfc" id="L112" title="All 4 branches covered.">		if (assignments.existsByCrew_Id(id) || incidents.existsByAffectedCrews_Id(id)) {</span>
+<span class="fc" id="L113">			throw new DeletionNotAllowedException(DELETE_BLOCKED, &quot;crew &quot; + id + &quot; is in use&quot;);</span>
 		}
-<span class="fc" id="L109">		crews.delete(crew);</span>
-<span class="fc" id="L110">	}</span>
+<span class="fc" id="L115">		crews.delete(crew);</span>
+<span class="fc" id="L116">	}</span>
 
 	private Crew load(Long id) {
-<span class="fc" id="L113">		return crews.findById(id).orElseThrow(() -&gt; new NotFoundException(Crew.class, id));</span>
+<span class="fc" id="L119">		return crews.findById(id).orElseThrow(() -&gt; new NotFoundException(Crew.class, id));</span>
 	}
 
 }

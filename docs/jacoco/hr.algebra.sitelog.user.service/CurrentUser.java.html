@@ -3,21 +3,30 @@
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+import hr.algebra.sitelog.user.domain.AppUser;
 import hr.algebra.sitelog.user.domain.RoleName;
 
 /**
  * Snapshot of the signed-in user, safe to keep outside a transaction and to put in the model
  * (the top bar shows {@code fullName}, {@code initials} and the role).
  */
-<span class="fc" id="L12">public record CurrentUser(Long id, String email, String fullName, RoleName role) {</span>
+<span class="fc" id="L13">public record CurrentUser(Long id, String email, String fullName, RoleName role) {</span>
+
+	public static CurrentUser of(AppUser user) {
+<span class="fc" id="L16">		return new CurrentUser(user.getId(), user.getEmail(), user.getFullName(), user.getRole().getName());</span>
+	}
+
+	public boolean hasRole(RoleName roleName) {
+<span class="fc bfc" id="L20" title="All 2 branches covered.">		return role == roleName;</span>
+	}
 
 	/** &quot;Marko Kovačević&quot; -&gt; &quot;MK&quot;; at most two letters. */
 	public String initials() {
-<span class="fc" id="L16">		return Arrays.stream(fullName.trim().split(&quot;\\s+&quot;))</span>
-<span class="pc bpc" id="L17" title="1 of 2 branches missed.">			.filter(part -&gt; !part.isEmpty())</span>
-<span class="fc" id="L18">			.limit(2)</span>
-<span class="fc" id="L19">			.map(part -&gt; part.substring(0, 1).toUpperCase())</span>
-<span class="fc" id="L20">			.collect(Collectors.joining());</span>
+<span class="fc" id="L25">		return Arrays.stream(fullName.trim().split(&quot;\\s+&quot;))</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">			.filter(part -&gt; !part.isEmpty())</span>
+<span class="fc" id="L27">			.limit(2)</span>
+<span class="fc" id="L28">			.map(part -&gt; part.substring(0, 1).toUpperCase())</span>
+<span class="fc" id="L29">			.collect(Collectors.joining());</span>
 	}
 
 }

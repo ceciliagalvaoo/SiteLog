@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserAdminController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.user.web</a> &gt; <span class="el_source">UserAdminController.java</span></div><h1>UserAdminController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.user.web;
+
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.common.web.Pages;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.service.PasswordPolicy;
+import hr.algebra.sitelog.user.service.SiteAssignmentOption;
+import hr.algebra.sitelog.user.service.UserService;
+import hr.algebra.sitelog.user.service.UserView;
+
+/**
+ * User administration (Admin only: {@code /admin/**} in the filter chain and
+ * {@code hasRole('ADMIN')} on {@link UserService}). Thin: form -&gt; service -&gt; redirect + flash.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;{@code GET /admin/users?q=&amp;page=&amp;sort=} - list ({@code user/list}): {@code users}
+ * (Page of {@code UserListItem}), {@code q}.&lt;/li&gt;
+ * &lt;li&gt;{@code GET /admin/users/new}, {@code POST /admin/users} - create ({@code user/form} with
+ * {@code userForm} = {@link NewUserForm}, {@code userId} = null, {@code passwordMinLength}).&lt;/li&gt;
+ * &lt;li&gt;{@code GET /admin/users/{id}/edit}, {@code POST /admin/users/{id}} - edit ({@code user/form}
+ * with {@code userForm} = {@link UserForm}, {@code userId}, {@code user}, {@code siteOptions},
+ * {@code siteAssignmentForm}).&lt;/li&gt;
+ * &lt;li&gt;{@code POST /admin/users/{id}/sites} - site assignment (field {@code siteIds}).&lt;/li&gt;
+ * &lt;li&gt;{@code POST /admin/users/{id}/activate} / {@code /deactivate}.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * Both forms also get {@code roles} and {@code languages}.
+ */
+@Controller
+@RequestMapping(&quot;/admin/users&quot;)
+public class UserAdminController {
+
+	static final String LIST_VIEW = &quot;user/list&quot;;
+
+	static final String FORM_VIEW = &quot;user/form&quot;;
+
+<span class="fc" id="L55">	private static final Set&lt;String&gt; SORTABLE = Set.of(&quot;fullName&quot;, &quot;email&quot;, &quot;active&quot;);</span>
+
+	private final UserService userService;
+
+<span class="fc" id="L59">	public UserAdminController(UserService userService) {</span>
+<span class="fc" id="L60">		this.userService = userService;</span>
+<span class="fc" id="L61">	}</span>
+
+	@GetMapping
+	public String list(@RequestParam(name = &quot;q&quot;, required = false) String filter,
+			@PageableDefault(size = 20) Pageable pageable, Model model) {
+<span class="fc" id="L66">		model.addAttribute(&quot;users&quot;, userService.list(filter, Pages.restrict(pageable, SORTABLE, Sort.by(&quot;fullName&quot;))));</span>
+<span class="fc" id="L67">		model.addAttribute(&quot;q&quot;, filter);</span>
+<span class="fc" id="L68">		return LIST_VIEW;</span>
+	}
+
+	@GetMapping(&quot;/new&quot;)
+	public String newForm(Model model) {
+<span class="fc" id="L73">		model.addAttribute(&quot;userForm&quot;, new NewUserForm());</span>
+<span class="fc" id="L74">		return renderNew(model);</span>
+	}
+
+	@PostMapping
+	public String create(@Validated @ModelAttribute(&quot;userForm&quot;) NewUserForm form, BindingResult result, Model model,
+			RedirectAttributes redirect) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L82">				Long id = userService.create(form.toCommand());</span>
+<span class="fc" id="L83">				Flash.success(redirect, &quot;user.flash.created&quot;, form.getFullName());</span>
+<span class="fc" id="L84">				return &quot;redirect:/admin/users/&quot; + id + &quot;/edit&quot;;</span>
+			}
+<span class="fc" id="L86">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L87">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L90">		form.setInitialPassword(null);</span>
+<span class="fc" id="L91">		return renderNew(model);</span>
+	}
+
+	@GetMapping(&quot;/{id}/edit&quot;)
+	public String editForm(@PathVariable Long id, Model model) {
+<span class="fc" id="L96">		UserView user = userService.get(id);</span>
+<span class="fc" id="L97">		model.addAttribute(&quot;userForm&quot;, UserForm.from(user));</span>
+<span class="fc" id="L98">		return renderEdit(model, user, null);</span>
+	}
+
+	@PostMapping(&quot;/{id}&quot;)
+	public String update(@PathVariable Long id, @Validated @ModelAttribute(&quot;userForm&quot;) UserForm form,
+			BindingResult result, Model model, RedirectAttributes redirect) {
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L106">				userService.update(id, form.toCommand());</span>
+<span class="fc" id="L107">				Flash.success(redirect, &quot;user.flash.updated&quot;, form.getFullName());</span>
+<span class="fc" id="L108">				return &quot;redirect:/admin/users&quot;;</span>
+			}
+<span class="fc" id="L110">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L111">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L114">		return renderEdit(model, userService.get(id), null);</span>
+	}
+
+	@PostMapping(&quot;/{id}/sites&quot;)
+	public String assignSites(@PathVariable Long id,
+			@ModelAttribute(&quot;siteAssignmentForm&quot;) SiteAssignmentForm form, BindingResult result, Model model,
+			RedirectAttributes redirect) {
+		try {
+<span class="fc" id="L122">			userService.assignSites(id, form.getSiteIds());</span>
+<span class="fc" id="L123">			Flash.success(redirect, &quot;user.flash.sitesAssigned&quot;);</span>
+<span class="fc" id="L124">			return &quot;redirect:/admin/users/&quot; + id + &quot;/edit&quot;;</span>
+		}
+<span class="fc" id="L126">		catch (InvalidFieldException e) {</span>
+<span class="fc" id="L127">			result.rejectValue(e.getField(), e.getMessageKey());</span>
+		}
+<span class="fc" id="L129">		UserView user = userService.get(id);</span>
+<span class="fc" id="L130">		model.addAttribute(&quot;userForm&quot;, UserForm.from(user));</span>
+<span class="fc" id="L131">		return renderEdit(model, user, form);</span>
+	}
+
+	@PostMapping(&quot;/{id}/activate&quot;)
+	public String activate(@PathVariable Long id, RedirectAttributes redirect) {
+<span class="fc" id="L136">		Flash.success(redirect, &quot;user.flash.activated&quot;, userService.setActive(id, true));</span>
+<span class="fc" id="L137">		return &quot;redirect:/admin/users&quot;;</span>
+	}
+
+	/** Deactivating oneself is refused by the service ({@code InvalidTransitionException} -&gt; error flash). */
+	@PostMapping(&quot;/{id}/deactivate&quot;)
+	public String deactivate(@PathVariable Long id, RedirectAttributes redirect) {
+<span class="fc" id="L143">		Flash.success(redirect, &quot;user.flash.deactivated&quot;, userService.setActive(id, false));</span>
+<span class="fc" id="L144">		return &quot;redirect:/admin/users&quot;;</span>
+	}
+
+	private static String renderNew(Model model) {
+<span class="fc" id="L148">		model.addAttribute(&quot;userId&quot;, null);</span>
+<span class="fc" id="L149">		model.addAttribute(&quot;passwordMinLength&quot;, PasswordPolicy.MIN_LENGTH);</span>
+<span class="fc" id="L150">		addOptions(model);</span>
+<span class="fc" id="L151">		return FORM_VIEW;</span>
+	}
+
+	private String renderEdit(Model model, UserView user, SiteAssignmentForm submittedSites) {
+<span class="fc" id="L155">		List&lt;SiteAssignmentOption&gt; siteOptions = userService.siteOptions(user.id());</span>
+<span class="fc" id="L156">		model.addAttribute(&quot;userId&quot;, user.id());</span>
+<span class="fc" id="L157">		model.addAttribute(&quot;user&quot;, user);</span>
+<span class="fc" id="L158">		model.addAttribute(&quot;siteOptions&quot;, siteOptions);</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">		if (submittedSites == null) {</span>
+<span class="fc" id="L160">			model.addAttribute(&quot;siteAssignmentForm&quot;, SiteAssignmentForm.from(siteOptions));</span>
+		}
+<span class="fc" id="L162">		addOptions(model);</span>
+<span class="fc" id="L163">		return FORM_VIEW;</span>
+	}
+
+	private static void addOptions(Model model) {
+<span class="fc" id="L167">		model.addAttribute(&quot;roles&quot;, RoleName.values());</span>
+<span class="fc" id="L168">		model.addAttribute(&quot;languages&quot;, UserService.LANGUAGES);</span>
+<span class="fc" id="L169">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

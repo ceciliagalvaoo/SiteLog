@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,9 @@ import hr.algebra.sitelog.user.service.UserOption;
 /**
  * Site management (Admin) and the site pages.
  *
+ * &lt;p&gt;Authorization: every signed-in user reads all sites; create / update / delete and the
+ * manager options of the site form are Admin only ({@code @PreAuthorize}).
+ *
  * &lt;p&gt;Delete rule (decided 07/11, ADR-0001 item 3): a site can only be deleted while it has no
  * daily logs, incidents or AI incident drafts. Otherwise it holds records and is finished by
  * setting an end date instead. The foreign keys ({@code ON DELETE RESTRICT}) refuse the delete
@@ -36,6 +40,7 @@ import hr.algebra.sitelog.user.service.UserOption;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
 public class SiteService {
 
 	public static final String CODE_DUPLICATE = &quot;validation.site.code.duplicate&quot;;
@@ -44,12 +49,12 @@ public class SiteService {
 
 	public static final String DELETE_BLOCKED = &quot;site.flash.deleteBlocked&quot;;
 
-<span class="fc" id="L47">	private static final EnumSet&lt;LogStatus&gt; AWAITING_SIGN_OFF = EnumSet.of(LogStatus.DRAFT, LogStatus.REOPENED);</span>
+<span class="fc" id="L52">	private static final EnumSet&lt;LogStatus&gt; AWAITING_SIGN_OFF = EnumSet.of(LogStatus.DRAFT, LogStatus.REOPENED);</span>
 
-<span class="fc" id="L49">	private static final EnumSet&lt;IncidentStatus&gt; OPEN_INCIDENT = EnumSet.of(IncidentStatus.REPORTED,</span>
+<span class="fc" id="L54">	private static final EnumSet&lt;IncidentStatus&gt; OPEN_INCIDENT = EnumSet.of(IncidentStatus.REPORTED,</span>
 			IncidentStatus.UNDER_REVIEW);
 
-<span class="fc" id="L52">	private static final EnumSet&lt;CorrectiveActionStatus&gt; OPEN_ACTION = EnumSet.of(CorrectiveActionStatus.OPEN,</span>
+<span class="fc" id="L57">	private static final EnumSet&lt;CorrectiveActionStatus&gt; OPEN_ACTION = EnumSet.of(CorrectiveActionStatus.OPEN,</span>
 			CorrectiveActionStatus.OVERDUE);
 
 	private final SiteRepository sites;
@@ -65,23 +70,23 @@ public class SiteService {
 	private final Clock clock;
 
 	public SiteService(SiteRepository sites, AppUserRepository users, DailyLogRepository dailyLogs,
-<span class="fc" id="L68">			IncidentRepository incidents, CorrectiveActionRepository correctiveActions, Clock clock) {</span>
-<span class="fc" id="L69">		this.sites = sites;</span>
-<span class="fc" id="L70">		this.users = users;</span>
-<span class="fc" id="L71">		this.dailyLogs = dailyLogs;</span>
-<span class="fc" id="L72">		this.incidents = incidents;</span>
-<span class="fc" id="L73">		this.correctiveActions = correctiveActions;</span>
-<span class="fc" id="L74">		this.clock = clock;</span>
-<span class="fc" id="L75">	}</span>
+<span class="fc" id="L73">			IncidentRepository incidents, CorrectiveActionRepository correctiveActions, Clock clock) {</span>
+<span class="fc" id="L74">		this.sites = sites;</span>
+<span class="fc" id="L75">		this.users = users;</span>
+<span class="fc" id="L76">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L77">		this.incidents = incidents;</span>
+<span class="fc" id="L78">		this.correctiveActions = correctiveActions;</span>
+<span class="fc" id="L79">		this.clock = clock;</span>
+<span class="fc" id="L80">	}</span>
 
 	/** Sites list with an optional text filter on code or name; the manager is fetched in the same query. */
 	public Page&lt;SiteListItem&gt; list(String filter, Pageable pageable) {
-<span class="fc bfc" id="L79" title="All 4 branches covered.">		Page&lt;Site&gt; page = (filter == null || filter.isBlank())</span>
-<span class="fc" id="L80">				? sites.findAllWithManager(pageable)</span>
-<span class="fc" id="L81">				: sites.searchWithManager(filter.trim(), pageable);</span>
-<span class="fc" id="L82">		LocalDate today = LocalDate.now(clock);</span>
-<span class="fc" id="L83">		return page.map(site -&gt; new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
-<span class="fc" id="L84">				site.getStartDate(), site.getEndDate(), site.getManager().getFullName(), isFinished(site, today)));</span>
+<span class="fc bfc" id="L84" title="All 4 branches covered.">		Page&lt;Site&gt; page = (filter == null || filter.isBlank())</span>
+<span class="fc" id="L85">				? sites.findAllWithManager(pageable)</span>
+<span class="fc" id="L86">				: sites.searchWithManager(filter.trim(), pageable);</span>
+<span class="fc" id="L87">		LocalDate today = LocalDate.now(clock);</span>
+<span class="fc" id="L88">		return page.map(site -&gt; new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
+<span class="fc" id="L89">				site.getStartDate(), site.getEndDate(), site.getManager().getFullName(), isFinished(site, today)));</span>
 	}
 
 	/**
@@ -89,90 +94,104 @@ public class SiteService {
 	 * {@link SiteStatusFilter#ALL} is the same as {@link #list(String, Pageable)}.
 	 */
 	public Page&lt;SiteListItem&gt; list(String filter, SiteStatusFilter status, Pageable pageable) {
-<span class="pc bpc" id="L92" title="1 of 4 branches missed.">		if (status == null || status == SiteStatusFilter.ALL) {</span>
-<span class="fc" id="L93">			return list(filter, pageable);</span>
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">		if (status == null || status == SiteStatusFilter.ALL) {</span>
+<span class="fc" id="L98">			return list(filter, pageable);</span>
 		}
-<span class="fc" id="L95">		LocalDate today = LocalDate.now(clock);</span>
-<span class="fc bfc" id="L96" title="All 2 branches covered.">		String text = filter == null ? &quot;&quot; : filter.trim();</span>
-<span class="fc" id="L97">		return sites.searchByStatusWithManager(text, status.name(), today, pageable)</span>
-<span class="fc" id="L98">			.map(site -&gt; new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
-<span class="fc" id="L99">					site.getStartDate(), site.getEndDate(), site.getManager().getFullName(),</span>
-<span class="fc" id="L100">					isFinished(site, today)));</span>
+<span class="fc" id="L100">		LocalDate today = LocalDate.now(clock);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">		String text = filter == null ? &quot;&quot; : filter.trim();</span>
+<span class="fc" id="L102">		return sites.searchByStatusWithManager(text, status.name(), today, pageable)</span>
+<span class="fc" id="L103">			.map(site -&gt; new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
+<span class="fc" id="L104">					site.getStartDate(), site.getEndDate(), site.getManager().getFullName(),</span>
+<span class="fc" id="L105">					isFinished(site, today)));</span>
 	}
 
 	public SiteDetails get(Long id) {
-<span class="fc" id="L104">		Site site = sites.findWithManagerById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
-<span class="fc" id="L105">		return new SiteDetails(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
-<span class="fc" id="L106">				site.getDescription(), site.getStartDate(), site.getEndDate(), site.getManager().getId(),</span>
-<span class="fc" id="L107">				site.getManager().getFullName(), isFinished(site, LocalDate.now(clock)),</span>
-<span class="fc" id="L108">				dailyLogs.countBySite_Id(id),</span>
-<span class="fc" id="L109">				AWAITING_SIGN_OFF.stream().mapToLong(status -&gt; dailyLogs.countBySite_IdAndStatus(id, status)).sum(),</span>
-<span class="fc" id="L110">				incidents.countBySite_IdAndStatusIn(id, OPEN_INCIDENT),</span>
-<span class="fc" id="L111">				correctiveActions.countByIncident_Site_IdAndStatusIn(id, OPEN_ACTION),</span>
-<span class="fc" id="L112">				dailyLogs.findLastLogDateBySiteId(id).orElse(null));</span>
+<span class="fc" id="L109">		Site site = sites.findWithManagerById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
+<span class="fc" id="L110">		return new SiteDetails(site.getId(), site.getCode(), site.getName(), site.getAddress(),</span>
+<span class="fc" id="L111">				site.getDescription(), site.getStartDate(), site.getEndDate(), site.getManager().getId(),</span>
+<span class="fc" id="L112">				site.getManager().getFullName(), isFinished(site, LocalDate.now(clock)),</span>
+<span class="fc" id="L113">				dailyLogs.countBySite_Id(id),</span>
+<span class="fc" id="L114">				AWAITING_SIGN_OFF.stream().mapToLong(status -&gt; dailyLogs.countBySite_IdAndStatus(id, status)).sum(),</span>
+<span class="fc" id="L115">				incidents.countBySite_IdAndStatusIn(id, OPEN_INCIDENT),</span>
+<span class="fc" id="L116">				correctiveActions.countByIncident_Site_IdAndStatusIn(id, OPEN_ACTION),</span>
+<span class="fc" id="L117">				dailyLogs.findLastLogDateBySiteId(id).orElse(null));</span>
 	}
 
 	/** The site without KPIs (header of the daily log pages). */
 	public SiteListItem getSummary(Long id) {
-<span class="fc" id="L117">		Site site = sites.findWithManagerById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
-<span class="fc" id="L118">		return new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(), site.getStartDate(),</span>
-<span class="fc" id="L119">				site.getEndDate(), site.getManager().getFullName(), isFinished(site, LocalDate.now(clock)));</span>
+<span class="fc" id="L122">		Site site = sites.findWithManagerById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
+<span class="fc" id="L123">		return new SiteListItem(site.getId(), site.getCode(), site.getName(), site.getAddress(), site.getStartDate(),</span>
+<span class="fc" id="L124">				site.getEndDate(), site.getManager().getFullName(), isFinished(site, LocalDate.now(clock)));</span>
 	}
 
-	/** Active users with the SITE_MANAGER role, offered in the site form. */
+	/**
+	 * The site header of the &quot;New daily log&quot; form and its row actions (add / remove a work entry
+	 * or crew row without saving): only for the site manager of this site, the same rule as
+	 * {@code DailyLogService.create}, so the form is not even shown to anyone else (403).
+	 */
+	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)&quot;)
+	public SiteListItem getSummaryForNewLog(Long siteId) {
+<span class="fc" id="L134">		return getSummary(siteId);</span>
+	}
+
+	/** Active users with the SITE_MANAGER role, offered in the site form (Admin only). */
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	public List&lt;UserOption&gt; managerOptions() {
-<span class="fc" id="L124">		return users.findByRole_NameAndActiveTrueOrderByFullNameAsc(RoleName.SITE_MANAGER).stream()</span>
-<span class="fc" id="L125">			.map(user -&gt; new UserOption(user.getId(), user.getFullName(), user.getEmail()))</span>
-<span class="fc" id="L126">			.toList();</span>
+<span class="fc" id="L140">		return users.findByRole_NameAndActiveTrueOrderByFullNameAsc(RoleName.SITE_MANAGER).stream()</span>
+<span class="fc" id="L141">			.map(user -&gt; new UserOption(user.getId(), user.getFullName(), user.getEmail()))</span>
+<span class="fc" id="L142">			.toList();</span>
 	}
 
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public Long create(SiteCommand command) {
-<span class="fc bfc" id="L131" title="All 2 branches covered.">		if (sites.existsByCodeIgnoreCase(command.code())) {</span>
-<span class="fc" id="L132">			throw new InvalidFieldException(&quot;code&quot;, CODE_DUPLICATE);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">		if (sites.existsByCodeIgnoreCase(command.code())) {</span>
+<span class="fc" id="L149">			throw new InvalidFieldException(&quot;code&quot;, CODE_DUPLICATE);</span>
 		}
-<span class="fc" id="L134">		Site site = new Site(command.code(), command.name(), command.address(), command.startDate(),</span>
-<span class="fc" id="L135">				loadManager(command.managerId()));</span>
-<span class="fc" id="L136">		site.setDescription(command.description());</span>
-<span class="fc" id="L137">		site.setEndDate(command.endDate());</span>
-<span class="fc" id="L138">		return sites.save(site).getId();</span>
+<span class="fc" id="L151">		Site site = new Site(command.code(), command.name(), command.address(), command.startDate(),</span>
+<span class="fc" id="L152">				loadManager(command.managerId()));</span>
+<span class="fc" id="L153">		site.setDescription(command.description());</span>
+<span class="fc" id="L154">		site.setEndDate(command.endDate());</span>
+<span class="fc" id="L155">		return sites.save(site).getId();</span>
 	}
 
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public void update(Long id, SiteCommand command) {
-<span class="fc" id="L143">		Site site = sites.findById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
-<span class="fc bfc" id="L144" title="All 2 branches covered.">		if (sites.existsByCodeIgnoreCaseAndIdNot(command.code(), id)) {</span>
-<span class="fc" id="L145">			throw new InvalidFieldException(&quot;code&quot;, CODE_DUPLICATE);</span>
+<span class="fc" id="L161">		Site site = sites.findById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">		if (sites.existsByCodeIgnoreCaseAndIdNot(command.code(), id)) {</span>
+<span class="fc" id="L163">			throw new InvalidFieldException(&quot;code&quot;, CODE_DUPLICATE);</span>
 		}
-<span class="fc" id="L147">		site.setCode(command.code());</span>
-<span class="fc" id="L148">		site.setName(command.name());</span>
-<span class="fc" id="L149">		site.setAddress(command.address());</span>
-<span class="fc" id="L150">		site.setDescription(command.description());</span>
-<span class="fc" id="L151">		site.setStartDate(command.startDate());</span>
-<span class="fc" id="L152">		site.setEndDate(command.endDate());</span>
-<span class="fc" id="L153">		site.setManager(loadManager(command.managerId()));</span>
-<span class="fc" id="L154">	}</span>
+<span class="fc" id="L165">		site.setCode(command.code());</span>
+<span class="fc" id="L166">		site.setName(command.name());</span>
+<span class="fc" id="L167">		site.setAddress(command.address());</span>
+<span class="fc" id="L168">		site.setDescription(command.description());</span>
+<span class="fc" id="L169">		site.setStartDate(command.startDate());</span>
+<span class="fc" id="L170">		site.setEndDate(command.endDate());</span>
+<span class="fc" id="L171">		site.setManager(loadManager(command.managerId()));</span>
+<span class="fc" id="L172">	}</span>
 
+	@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
 	@Transactional
 	public void delete(Long id) {
-<span class="fc" id="L158">		Site site = sites.findById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
-<span class="fc bfc" id="L159" title="All 6 branches covered.">		if (dailyLogs.existsBySite_Id(id) || incidents.existsBySite_Id(id) || sites.existsIncidentDraftBySiteId(id)) {</span>
-<span class="fc" id="L160">			throw new DeletionNotAllowedException(DELETE_BLOCKED, &quot;site &quot; + id + &quot; has records&quot;);</span>
+<span class="fc" id="L177">		Site site = sites.findById(id).orElseThrow(() -&gt; new NotFoundException(Site.class, id));</span>
+<span class="fc bfc" id="L178" title="All 6 branches covered.">		if (dailyLogs.existsBySite_Id(id) || incidents.existsBySite_Id(id) || sites.existsIncidentDraftBySiteId(id)) {</span>
+<span class="fc" id="L179">			throw new DeletionNotAllowedException(DELETE_BLOCKED, &quot;site &quot; + id + &quot; has records&quot;);</span>
 		}
-<span class="fc" id="L162">		sites.delete(site);</span>
-<span class="fc" id="L163">	}</span>
+<span class="fc" id="L181">		sites.delete(site);</span>
+<span class="fc" id="L182">	}</span>
 
 	/** The manager must be an active SITE_MANAGER (a CHECK constraint cannot look at another table). */
 	private AppUser loadManager(Long managerId) {
-<span class="fc" id="L167">		return users.findById(managerId)</span>
-<span class="fc" id="L168">			.filter(AppUser::isActive)</span>
-<span class="fc bfc" id="L169" title="All 2 branches covered.">			.filter(user -&gt; user.getRole().getName() == RoleName.SITE_MANAGER)</span>
-<span class="fc" id="L170">			.orElseThrow(() -&gt; new InvalidFieldException(&quot;managerId&quot;, MANAGER_INVALID));</span>
+<span class="fc" id="L186">		return users.findById(managerId)</span>
+<span class="fc" id="L187">			.filter(AppUser::isActive)</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">			.filter(user -&gt; user.getRole().getName() == RoleName.SITE_MANAGER)</span>
+<span class="fc" id="L189">			.orElseThrow(() -&gt; new InvalidFieldException(&quot;managerId&quot;, MANAGER_INVALID));</span>
 	}
 
 	/** A site is finished once its end date is reached; a future end date is only planned. */
 	static boolean isFinished(Site site, LocalDate today) {
-<span class="fc bfc" id="L175" title="All 4 branches covered.">		return site.getEndDate() != null &amp;&amp; !site.getEndDate().isAfter(today);</span>
+<span class="fc bfc" id="L194" title="All 4 branches covered.">		return site.getEndDate() != null &amp;&amp; !site.getEndDate().isAfter(today);</span>
 	}
 
 }
