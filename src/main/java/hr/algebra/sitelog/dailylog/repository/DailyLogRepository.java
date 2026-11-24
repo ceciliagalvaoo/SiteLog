@@ -85,6 +85,9 @@ public interface DailyLogRepository extends JpaRepository<DailyLog, Long> {
 	/** Uniqueness check before insert/update ({@code uk_daily_log_site_date}). */
 	boolean existsBySite_IdAndLogDate(Long siteId, LocalDate logDate);
 
+	/** "Own site" authorization check ({@code SiteAccess}): is this user the manager of the log's site? */
+	boolean existsByIdAndSite_Manager_Id(Long dailyLogId, Long managerId);
+
 	boolean existsBySite_IdAndLogDateAndIdNot(Long siteId, LocalDate logDate, Long id);
 
 	/** Delete rule for sites: a site with daily logs cannot be deleted. */

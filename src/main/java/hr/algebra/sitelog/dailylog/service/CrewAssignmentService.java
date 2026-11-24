@@ -2,6 +2,7 @@ package hr.algebra.sitelog.dailylog.service;
 
 import java.util.HashMap;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import hr.algebra.sitelog.dailylog.repository.WorkEntryRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class CrewAssignmentService {
 
 	private final DailyLogRepository dailyLogs;
@@ -49,6 +51,7 @@ public class CrewAssignmentService {
 		return loadAssignment(dailyLogId, assignmentId).getWorkEntry().getId();
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public Long create(Long dailyLogId, Long workEntryId, Long expectedLogVersion, CrewAssignmentCommand command) {
 		loadLogForChange(dailyLogId, expectedLogVersion);
@@ -65,6 +68,7 @@ public class CrewAssignmentService {
 		return assignments.save(assignment).getId();
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public void update(Long dailyLogId, Long assignmentId, Long expectedLogVersion, CrewAssignmentCommand command) {
 		loadLogForChange(dailyLogId, expectedLogVersion);
@@ -81,6 +85,7 @@ public class CrewAssignmentService {
 	}
 
 	/** Removes the row; {@code orphanRemoval} deletes it at flush. */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public void delete(Long dailyLogId, Long assignmentId, Long expectedLogVersion) {
 		loadLogForChange(dailyLogId, expectedLogVersion);

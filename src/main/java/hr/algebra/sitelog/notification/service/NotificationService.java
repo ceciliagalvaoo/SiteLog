@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class NotificationService {
 
 	/** How many unread notifications the bell dropdown lists. */

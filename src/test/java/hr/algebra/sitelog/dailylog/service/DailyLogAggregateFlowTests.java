@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.annotation.DirtiesContext;
 
 import hr.algebra.sitelog.TestcontainersConfiguration;
@@ -29,6 +31,7 @@ import hr.algebra.sitelog.dailylog.domain.LogStatus;
 import hr.algebra.sitelog.dailylog.domain.Weather;
 import hr.algebra.sitelog.site.service.SiteCommand;
 import hr.algebra.sitelog.site.service.SiteService;
+import hr.algebra.sitelog.support.RunAs;
 
 /**
  * End-to-end check of the M2-07 service rules against PostgreSQL. Not {@code @Transactional}: each
@@ -38,7 +41,16 @@ import hr.algebra.sitelog.site.service.SiteService;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@WithUserDetails(DailyLogAggregateFlowTests.MANAGER)
 class DailyLogAggregateFlowTests {
+
+	/** The site manager the test sites are created for; the site and crew changes run as the Admin. */
+	static final String MANAGER = "manager@sitelog.test";
+
+	static final String ADMIN = "admin@sitelog.test";
+
+	@Autowired
+	UserDetailsService userDetailsService;
 
 	@Autowired
 	SiteService siteService;
@@ -68,8 +80,8 @@ class DailyLogAggregateFlowTests {
 	void site() {
 		Long managerId = jdbc.queryForObject("select id from app_user where email = 'manager@sitelog.test'", Long.class);
 		String code = "IT-" + System.nanoTime() % 100000;
-		siteId = siteService.create(new SiteCommand(code, "Integration site", "Test street 1", null,
-				LocalDate.now().minusYears(1), null, managerId));
+		siteId = RunAs.user(userDetailsService, ADMIN, () -> siteService.create(new SiteCommand(code,
+				"Integration site", "Test street 1", null, LocalDate.now().minusYears(1), null, managerId)));
 		List<CrewOption> crews = crewService.activeOptions();
 		crewA = crews.get(0).id();
 		crewB = crews.get(1).id();
@@ -161,16 +173,21 @@ class DailyLogAggregateFlowTests {
 	void deleteRulesForSiteDraftLogAndCrew() {
 		Long logId = dailyLogService.create(siteId, logWith(LocalDate.now().minusDays(5), row(null, crewA, "8")));
 
-		assertThatThrownBy(() -> siteService.delete(siteId)).isInstanceOf(DeletionNotAllowedException.class);
-		assertThatThrownBy(() -> crewService.delete(crewA)).isInstanceOf(DeletionNotAllowedException.class);
+		RunAs.user(userDetailsService, ADMIN, () -> {
+			assertThatThrownBy(() -> siteService.delete(siteId)).isInstanceOf(DeletionNotAllowedException.class);
+			assertThatThrownBy(() -> crewService.delete(crewA)).isInstanceOf(DeletionNotAllowedException.class);
+		});
 
 		// a DRAFT log goes with its work entries and crew rows; then the site is free to delete
 		dailyLogService.delete(logId, dailyLogService.getDetail(logId).version());
 		assertThat(jdbc.queryForObject("select count(*) from daily_log where id = ?", Long.class, logId)).isZero();
-		siteService.delete(siteId);
+		RunAs.user(userDetailsService, ADMIN, () -> siteService.delete(siteId));
 
-		Long unused = crewService.create(new CrewCommand("Unused crew " + System.nanoTime(), "Co", "Trade", true));
-		crewService.delete(unused);
+		Long unused = RunAs.user(userDetailsService, ADMIN, () -> {
+			Long id = crewService.create(new CrewCommand("Unused crew " + System.nanoTime(), "Co", "Trade", true));
+			crewService.delete(id);
+			return id;
+		});
 		assertThat(jdbc.queryForObject("select count(*) from crew where id = ?", Long.class, unused)).isZero();
 	}
 

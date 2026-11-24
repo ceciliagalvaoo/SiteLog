@@ -1,5 +1,6 @@
 package hr.algebra.sitelog.dailylog.service;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ import hr.algebra.sitelog.dailylog.repository.WorkEntryRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class WorkEntryService {
 
 	private final DailyLogRepository dailyLogs;
@@ -39,6 +41,7 @@ public class WorkEntryService {
 		return WorkEntryView.of(loadEntry(dailyLogId, workEntryId));
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public Long create(Long dailyLogId, Long expectedLogVersion, WorkEntryCommand command) {
 		DailyLog log = loadLogForChange(dailyLogId, expectedLogVersion);
@@ -48,6 +51,7 @@ public class WorkEntryService {
 		return workEntries.save(entry).getId();
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public void update(Long dailyLogId, Long workEntryId, Long expectedLogVersion, WorkEntryCommand command) {
 		loadLogForChange(dailyLogId, expectedLogVersion);
@@ -55,6 +59,7 @@ public class WorkEntryService {
 	}
 
 	/** Removes the entry; {@code orphanRemoval} deletes it and its crew rows at flush. */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)")
 	@Transactional
 	public void delete(Long dailyLogId, Long workEntryId, Long expectedLogVersion) {
 		DailyLog log = loadLogForChange(dailyLogId, expectedLogVersion);

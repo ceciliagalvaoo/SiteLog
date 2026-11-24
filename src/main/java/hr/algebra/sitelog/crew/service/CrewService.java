@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +18,8 @@ import hr.algebra.sitelog.dailylog.repository.CrewAssignmentRepository;
 import hr.algebra.sitelog.incident.repository.IncidentRepository;
 
 /**
- * Crew management (admin reference data).
+ * Crew management (admin reference data). Every signed-in user reads crews (crew selects of the
+ * daily log); create / update / delete are Admin only.
  *
  * <p>Delete rule (decided 07/11): a crew can only be deleted while nothing references it. A crew
  * used in a crew assignment or listed as affected by an incident is part of a record and is
@@ -26,6 +28,7 @@ import hr.algebra.sitelog.incident.repository.IncidentRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class CrewService {
 
 	public static final String NAME_DUPLICATE = "validation.crew.name.duplicate";
@@ -77,6 +80,7 @@ public class CrewService {
 			.toList();
 	}
 
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public Long create(CrewCommand command) {
 		if (crews.existsByNameIgnoreCase(command.name())) {
@@ -87,6 +91,7 @@ public class CrewService {
 		return crews.save(crew).getId();
 	}
 
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public void update(Long id, CrewCommand command) {
 		Crew crew = load(id);
@@ -100,6 +105,7 @@ public class CrewService {
 	}
 
 	/** Deletes an unused crew; a crew in use must be deactivated instead. */
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public void delete(Long id) {
 		Crew crew = load(id);

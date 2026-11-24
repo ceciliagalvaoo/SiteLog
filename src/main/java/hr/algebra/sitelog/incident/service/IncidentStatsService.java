@@ -2,6 +2,7 @@ package hr.algebra.sitelog.incident.service;
 
 import java.util.EnumSet;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import hr.algebra.sitelog.incident.repository.IncidentRepository;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class IncidentStatsService {
 
 	/** Not yet signed off: still needs someone's attention. */

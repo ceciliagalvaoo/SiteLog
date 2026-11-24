@@ -88,8 +88,10 @@ class DailyLogControllerTests extends WebSliceTest {
 
 	@BeforeEach
 	void site() {
-		when(siteService.getSummary(SITE_ID)).thenReturn(new SiteListItem(SITE_ID, "ZG-01", "Tower A", "Vukovarska 10",
-				LocalDate.of(2026, 1, 1), null, "Marko Kovacevic", false));
+		SiteListItem site = new SiteListItem(SITE_ID, "ZG-01", "Tower A", "Vukovarska 10", LocalDate.of(2026, 1, 1),
+				null, "Marko Kovacevic", false);
+		when(siteService.getSummary(SITE_ID)).thenReturn(site);
+		when(siteService.getSummaryForNewLog(SITE_ID)).thenReturn(site);
 		when(crewService.optionsIncluding(any())).thenReturn(List.of(new CrewOption(1L, "Kovac Formwork", "Formwork", true),
 				new CrewOption(2L, "Rebar Team", "Rebar", true)));
 	}

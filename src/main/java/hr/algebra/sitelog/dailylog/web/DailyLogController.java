@@ -72,7 +72,7 @@ public class DailyLogController {
 	@GetMapping("/sites/{siteId}/daily-logs/new")
 	public String newForm(@PathVariable Long siteId, Model model) {
 		model.addAttribute(FORM, DailyLogForm.blank(LocalDate.now(clock)));
-		return form(model, siteService.getSummary(siteId), null);
+		return form(model, siteService.getSummaryForNewLog(siteId), null);
 	}
 
 	@PostMapping("/sites/{siteId}/daily-logs")
@@ -80,7 +80,8 @@ public class DailyLogController {
 			BindingResult result, @RequestParam(name = "action", required = false) String action, Model model,
 			RedirectAttributes redirect, Locale locale) {
 		form.compact();
-		SiteListItem site = siteService.getSummary(siteId);
+		// protected read: a row action re-renders the form, so it needs the same check as the save
+		SiteListItem site = siteService.getSummaryForNewLog(siteId);
 		if (!RowActions.isSave(action)) {
 			return rowAction(form, action, model, site, null);
 		}

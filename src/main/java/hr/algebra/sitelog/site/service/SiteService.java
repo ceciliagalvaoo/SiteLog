@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,9 @@ import hr.algebra.sitelog.user.service.UserOption;
 /**
  * Site management (Admin) and the site pages.
  *
+ * <p>Authorization: every signed-in user reads all sites; create / update / delete and the
+ * manager options of the site form are Admin only ({@code @PreAuthorize}).
+ *
  * <p>Delete rule (decided 07/11, ADR-0001 item 3): a site can only be deleted while it has no
  * daily logs, incidents or AI incident drafts. Otherwise it holds records and is finished by
  * setting an end date instead. The foreign keys ({@code ON DELETE RESTRICT}) refuse the delete
@@ -36,6 +40,7 @@ import hr.algebra.sitelog.user.service.UserOption;
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class SiteService {
 
 	public static final String CODE_DUPLICATE = "validation.site.code.duplicate";
@@ -119,13 +124,25 @@ public class SiteService {
 				site.getEndDate(), site.getManager().getFullName(), isFinished(site, LocalDate.now(clock)));
 	}
 
-	/** Active users with the SITE_MANAGER role, offered in the site form. */
+	/**
+	 * The site header of the "New daily log" form and its row actions (add / remove a work entry
+	 * or crew row without saving): only for the site manager of this site, the same rule as
+	 * {@code DailyLogService.create}, so the form is not even shown to anyone else (403).
+	 */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)")
+	public SiteListItem getSummaryForNewLog(Long siteId) {
+		return getSummary(siteId);
+	}
+
+	/** Active users with the SITE_MANAGER role, offered in the site form (Admin only). */
+	@PreAuthorize("hasRole('ADMIN')")
 	public List<UserOption> managerOptions() {
 		return users.findByRole_NameAndActiveTrueOrderByFullNameAsc(RoleName.SITE_MANAGER).stream()
 			.map(user -> new UserOption(user.getId(), user.getFullName(), user.getEmail()))
 			.toList();
 	}
 
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public Long create(SiteCommand command) {
 		if (sites.existsByCodeIgnoreCase(command.code())) {
@@ -138,6 +155,7 @@ public class SiteService {
 		return sites.save(site).getId();
 	}
 
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public void update(Long id, SiteCommand command) {
 		Site site = sites.findById(id).orElseThrow(() -> new NotFoundException(Site.class, id));
@@ -153,6 +171,7 @@ public class SiteService {
 		site.setManager(loadManager(command.managerId()));
 	}
 
+	@PreAuthorize("hasRole('ADMIN')")
 	@Transactional
 	public void delete(Long id) {
 		Site site = sites.findById(id).orElseThrow(() -> new NotFoundException(Site.class, id));

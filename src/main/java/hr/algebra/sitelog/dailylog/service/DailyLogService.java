@@ -7,6 +7,7 @@ import java.time.ZonedDateTime;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,10 +41,13 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * children, the root is loaded with {@code OPTIMISTIC_FORCE_INCREMENT} (ADR-0001 item 6).</li>
  * <li><b>Delete</b> (decided 07/11): only a DRAFT log with no incident and no reopen request;
  * its work entries and crew rows go with it (cascade, they are part of the aggregate).</li>
+ * <li><b>Authorization.</b> Every signed-in user reads every log; creating, editing, deleting
+ * and signing off are for the SITE_MANAGER of the log's own site ({@code @siteAccess}).</li>
  * </ul>
  */
 @Service
 @Transactional(readOnly = true)
+@PreAuthorize("isAuthenticated()")
 public class DailyLogService {
 
 	public static final String DATE_DUPLICATE = "validation.dailyLog.date.duplicate";
@@ -102,6 +106,7 @@ public class DailyLogService {
 	}
 
 	/** Same data as the detail, refused for a locked log (the edit form is not offered). */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
 	public DailyLogDetails getForEdit(Long id) {
 		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -> new NotFoundException(DailyLog.class, id));
 		DailyLogRules.requireEditable(log);
@@ -115,12 +120,14 @@ public class DailyLogService {
 	}
 
 	/** Header for a page that changes a child (new / edit work entry or crew row): refused when locked. */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
 	public DailyLogHeader getHeaderForChange(Long id) {
 		DailyLog log = dailyLogs.findWithSiteById(id).orElseThrow(() -> new NotFoundException(DailyLog.class, id));
 		DailyLogRules.requireEditable(log);
 		return DailyLogHeader.of(log);
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)")
 	@Transactional
 	public Long create(Long siteId, DailyLogCommand command) {
 		Site site = sites.findById(siteId).orElseThrow(() -> new NotFoundException(Site.class, siteId));
@@ -135,6 +142,7 @@ public class DailyLogService {
 		return dailyLogs.save(log).getId();
 	}
 
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
 	@Transactional
 	public void update(Long id, Long expectedVersion, DailyLogCommand command) {
 		// 1) registers OPTIMISTIC_FORCE_INCREMENT on the root: version + 1 at commit even if only children change
@@ -154,6 +162,7 @@ public class DailyLogService {
 	}
 
 	/** Deletes a DRAFT log with its work entries and crew rows; returns the site id for the redirect. */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
 	@Transactional
 	public Long delete(Long id, Long expectedVersion) {
 		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -> new NotFoundException(DailyLog.class, id));
@@ -174,8 +183,9 @@ public class DailyLogService {
 	 * Sign-off: DRAFT or REOPENED -> SIGNED_OFF, recording who and when. From then on the log is
 	 * locked. Two concurrent sign-offs (or a sign-off racing an edit) both load version N; the
 	 * first commit makes it N + 1, the second UPDATE ... WHERE version = N matches no row and
-	 * fails with 409. Role checks ({@code @PreAuthorize}, own site) come in M3.
+	 * fails with 409. Only the manager of the log's site may sign it off.
 	 */
+	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
 	@Transactional
 	public void signOff(Long id, Long expectedVersion) {
 		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -> new NotFoundException(DailyLog.class, id));
