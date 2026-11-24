@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<!--/*
+  Login page (Figma p. 1 "Access - Login (desktop 1440)", mobile p. 11 "Login (mobile 390)").
+  Desktop: dark brand panel on the left, the form on the right. 390 px: the brand panel is hidden
+  and the logo sits above the form (CSS only, same markup).
+
+  Posts to POST /login (Spring Security): fields "email" and "password"; th:action adds the CSRF
+  token. Query parameters: ?error (wrong credentials or inactive account - one generic message, so
+  the page never tells which e-mails exist) and ?logout (signed out).
+  Not inside layout.html: there is no signed-in user yet, so no navigation and no currentUser.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title th:text="#{login.title} + ' · ' + #{app.name}">Sign in · SiteLog</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;display=swap">
+	<link rel="stylesheet" th:href="@{/css/app.css}" href="/css/app.css">
+	<script th:src="@{/js/app.js}" src="/js/app.js" defer></script>
+</head>
+<body class="auth-body">
+<div class="auth">
+	<section class="auth__hero" aria-hidden="true">
+		<div class="brand">
+			<span class="brand__mark">S</span>
+			<span>
+				<span class="brand__name" th:text="#{app.name}">SiteLog</span>
+				<span class="brand__tagline" th:text="#{app.tagline}">Site logs and safety</span>
+			</span>
+		</div>
+		<div class="auth__pitch">
+			<p class="auth__eyebrow" th:text="#{login.hero.eyebrow}">Construction site records</p>
+			<p class="auth__headline">
+				<span th:text="#{login.hero.line1}">Every shift.</span>
+				<span th:text="#{login.hero.line2}">Clearly logged.</span>
+			</p>
+			<p class="auth__body" th:text="#{login.hero.body}">Keep site teams aligned with daily records, incident reporting and compliance in one secure workspace.</p>
+		</div>
+		<p class="auth__foot" th:text="#{login.hero.foot}">Daily logs · Incidents · Compliance</p>
+	</section>
+
+	<main id="main" class="auth__panel">
+		<div class="auth__top">
+			<a class="brand auth__brand" th:href="@{/login}" href="/login">
+				<span class="brand__mark" aria-hidden="true">S</span>
+				<span class="brand__name" th:text="#{app.name}">SiteLog</span>
+			</a>
+			<div th:replace="~{fragments/navbar :: langSwitch}"></div>
+		</div>
+
+		<div class="auth__form-wrap">
+			<div class="page-header__text">
+				<p class="eyebrow" th:text="#{login.eyebrow}">Welcome back</p>
+				<h1 th:text="#{login.heading}">Sign in to SiteLog</h1>
+				<p class="lead" th:text="#{login.lead}">Use your work e-mail and password.</p>
+			</div>
+
+			<th:block th:if="${param.error != null}">
+				<div th:replace="~{fragments/flash :: flash('error', #{login.error.title}, #{login.error.body})}"></div>
+			</th:block>
+			<th:block th:if="${param.logout != null}">
+				<div th:replace="~{fragments/flash :: flash('success', #{login.logout.title}, null)}"></div>
+			</th:block>
+
+			<form class="form" method="post" th:action="@{/login}" action="/login" th:with="failed=${param.error != null}">
+				<div class="field" th:classappend="${failed} ? 'field--error'">
+					<label class="field__label" for="email" th:text="#{login.email}">Work e-mail</label>
+					<input class="control" type="email" id="email" name="email" autocomplete="username" required autofocus
+					       th:placeholder="#{login.email.placeholder}"
+					       th:attr="aria-invalid=${failed} ? 'true'">
+				</div>
+				<div class="field" th:classappend="${failed} ? 'field--error'">
+					<label class="field__label" for="password" th:text="#{login.password}">Password</label>
+					<input class="control" type="password" id="password" name="password" autocomplete="current-password" required
+					       th:placeholder="#{login.password.placeholder}"
+					       th:attr="aria-invalid=${failed} ? 'true'">
+				</div>
+				<button type="submit" class="btn btn--primary btn--block" th:text="#{login.submit}">Sign in</button>
+			</form>
+
+			<p class="auth__note" th:text="#{login.note}">Accounts are created by the administrator.</p>
+		</div>
+	</main>
+</div>
+</body>
+</html>

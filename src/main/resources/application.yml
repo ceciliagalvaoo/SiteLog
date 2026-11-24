@@ -63,7 +63,3 @@ sitelog:
   # Dates such as "today's log" and "overdue" are computed in the sites' time zone, not the
   # server's (Render runs in UTC).
   time-zone: Europe/Zagreb
-  current-user:
-    # Milestone M2 only: no real login of domain users yet, so services act as this seed user
-    # (ConfiguredCurrentUserProvider). Removed in M3 when Spring Security provides the user.
-    email: manager@sitelog.test

@@ -3,6 +3,7 @@ package hr.algebra.sitelog.user.service;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+import hr.algebra.sitelog.user.domain.AppUser;
 import hr.algebra.sitelog.user.domain.RoleName;
 
 /**
@@ -10,6 +11,14 @@ import hr.algebra.sitelog.user.domain.RoleName;
  * (the top bar shows {@code fullName}, {@code initials} and the role).
  */
 public record CurrentUser(Long id, String email, String fullName, RoleName role) {
+
+	public static CurrentUser of(AppUser user) {
+		return new CurrentUser(user.getId(), user.getEmail(), user.getFullName(), user.getRole().getName());
+	}
+
+	public boolean hasRole(RoleName roleName) {
+		return role == roleName;
+	}
 
 	/** "Marko Kovačević" -> "MK"; at most two letters. */
 	public String initials() {

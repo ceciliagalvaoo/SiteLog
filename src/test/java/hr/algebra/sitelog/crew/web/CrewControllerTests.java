@@ -44,7 +44,7 @@ import hr.algebra.sitelog.support.WebSliceTest;
 
 @WebMvcTest(CrewController.class)
 @Import(WebSliceConfig.class)
-@WithMockUser
+@WithMockUser(roles = "ADMIN")
 class CrewControllerTests extends WebSliceTest {
 
 	@MockitoBean

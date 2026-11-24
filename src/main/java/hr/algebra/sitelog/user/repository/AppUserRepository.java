@@ -3,8 +3,12 @@ package hr.algebra.sitelog.user.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import hr.algebra.sitelog.user.domain.AppUser;
 import hr.algebra.sitelog.user.domain.RoleName;
@@ -15,6 +19,23 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 	@EntityGraph(attributePaths = "role")
 	Optional<AppUser> findByEmailIgnoreCase(String email);
 
+	/** The signed-in user (top bar, profile) and the user form: user and role in one query. */
+	@EntityGraph(attributePaths = "role")
+	@Query("select u from AppUser u where u.id = :id")
+	Optional<AppUser> findWithRoleById(@Param("id") Long id);
+
+	/**
+	 * User administration list with an optional text filter on name or e-mail ({@code ''} for
+	 * none); the role is shown on every row, so it is fetched in the same query (no N+1).
+	 */
+	@EntityGraph(attributePaths = "role")
+	@Query("""
+			select u from AppUser u
+			where :text = ''
+			   or lower(u.fullName) like lower(concat('%', :text, '%'))
+			   or lower(u.email) like lower(concat('%', :text, '%'))""")
+	Page<AppUser> searchWithRole(@Param("text") String text, Pageable pageable);
+
 	/**
 	 * Active users with a role, e.g. the site managers offered in the site form or the safety
 	 * supervisors who receive REOPEN_REQUESTED / HIGH_SEVERITY_INCIDENT notifications.
@@ -23,5 +44,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 	List<AppUser> findByRole_NameAndActiveTrueOrderByFullNameAsc(RoleName roleName);
 
 	boolean existsByEmailIgnoreCase(String email);
+
+	boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
 
 }

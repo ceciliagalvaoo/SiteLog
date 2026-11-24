@@ -12,7 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,9 +26,11 @@ import hr.algebra.sitelog.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser
+@WithUserDetails("manager@sitelog.test")
 @Transactional
 class PostRedirectGetFlowTests {
+
+	private static final String ADMIN = "admin@sitelog.test";
 
 	@Autowired
 	MockMvc mvc;
@@ -41,6 +43,7 @@ class PostRedirectGetFlowTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN)
 	void createCrewRedirectsToTheListWithASuccessFlash() throws Exception {
 		mvc.perform(post("/crews").with(csrf())
 				.param("name", "PRG test crew").param("company", "Test d.o.o.").param("trade", "Painting")
@@ -51,6 +54,7 @@ class PostRedirectGetFlowTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN)
 	void deletingACrewInUseIsRefusedWithAnErrorFlash() throws Exception {
 		long crewId = id("select id from crew where name = 'Kovač Formwork'");
 		mvc.perform(post("/crews/{id}/delete", crewId).with(csrf()))
@@ -59,6 +63,7 @@ class PostRedirectGetFlowTests {
 	}
 
 	@Test
+	@WithUserDetails(ADMIN)
 	void deletingASiteWithLogsIsRefusedWithAnErrorFlash() throws Exception {
 		long siteId = id("select id from site where code = 'ZG-01'");
 		mvc.perform(post("/sites/{id}/delete", siteId).with(csrf()))

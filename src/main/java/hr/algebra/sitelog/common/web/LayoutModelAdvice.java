@@ -24,6 +24,9 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * <p>Limited to the application's own controllers: Spring Boot's {@code BasicErrorController}
  * (the 403 / 404 / 500 pages) must render even when the database is the reason for the error, so
  * the error pages never query it (the layout treats every attribute as optional).
+ *
+ * <p>An anonymous request (the login page) gets none of these attributes: there is no user to
+ * show, and the notification and incident services require a signed-in caller.
  */
 @ControllerAdvice(basePackages = "hr.algebra.sitelog")
 public class LayoutModelAdvice {
@@ -43,10 +46,12 @@ public class LayoutModelAdvice {
 
 	@ModelAttribute
 	public void layout(Model model) {
-		model.addAttribute("currentUser", currentUserProvider.currentUser());
-		model.addAttribute("unreadCount", notificationService.unreadCount());
-		model.addAttribute("notifications", notificationService.latestUnread());
-		model.addAttribute("openIncidentCount", incidentStats.openIncidentCount());
+		currentUserProvider.findCurrentUser().ifPresent(user -> {
+			model.addAttribute("currentUser", user);
+			model.addAttribute("unreadCount", notificationService.unreadCount());
+			model.addAttribute("notifications", notificationService.latestUnread());
+			model.addAttribute("openIncidentCount", incidentStats.openIncidentCount());
+		});
 	}
 
 }

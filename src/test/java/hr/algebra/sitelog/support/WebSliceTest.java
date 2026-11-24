@@ -3,6 +3,7 @@ package hr.algebra.sitelog.support;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,8 +42,9 @@ public abstract class WebSliceTest {
 
 	@BeforeEach
 	void layoutModel() {
-		when(currentUserProvider.currentUser())
-			.thenReturn(new CurrentUser(7L, "manager@sitelog.test", "Marko Kovacevic", RoleName.SITE_MANAGER));
+		CurrentUser manager = new CurrentUser(7L, "manager@sitelog.test", "Marko Kovacevic", RoleName.SITE_MANAGER);
+		when(currentUserProvider.findCurrentUser()).thenReturn(Optional.of(manager));
+		when(currentUserProvider.currentUser()).thenReturn(manager);
 		when(currentUserProvider.currentUserId()).thenReturn(7L);
 		when(notificationService.unreadCount()).thenReturn(0L);
 		when(notificationService.latestUnread()).thenReturn(List.of());
