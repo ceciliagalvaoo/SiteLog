@@ -98,10 +98,22 @@ together with the feature.
      (no user and no password in the URL);
    - `DB_USERNAME` = `postgres.<project-ref>`;
    - `DB_PASSWORD` = the database password.
-4. Pool limit: in **Project Settings → Database → Connection pooling**, read the *Pool size* /
-   *Max client connections* of the plan. In session mode every Hikari connection occupies one
-   pooler connection for as long as it is open, and the dashboard and SQL editor use the same pool.
-   `DB_POOL_SIZE` (default 5) must stay clearly below that number.
+4. Pool limit: in **Database → Settings → Connection pooling** (the dashboard moved it out of
+   Project Settings), read the *Connection pool size* and *Max client connections*. In session mode
+   every Hikari connection occupies one server connection for as long as it is open, and the
+   dashboard and SQL editor share the same pool, so `DB_POOL_SIZE` must stay clearly below the
+   pool size.
+
+   Values read on the SiteLog project (free plan, Nano compute, 2026-11-24):
+
+   | Setting | Value | Meaning |
+   |---|---|---|
+   | Connection pool size | 15 | Server connections to PostgreSQL per user + database (default for Nano, adjustable). |
+   | Max client connections | 200 | Client connections the pooler accepts (fixed for Nano). |
+
+   The app's 5 connections use a third of the 15, which leaves 10 for the dashboard, the SQL
+   editor and a second app instance during a zero-downtime deploy (old and new instance overlap
+   for a moment, so up to 10 app connections).
 5. Do **not** create tables by hand: Flyway creates everything on the first boot.
 
 ### 2. Render: the web service
