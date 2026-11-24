@@ -1,0 +1,62 @@
+# Production profile (Render web service + Supabase PostgreSQL).
+# Activated with SPRING_PROFILES_ACTIVE=prod. Every connection value comes from an environment
+# variable WITHOUT a default: if one is missing, the literal "${...}" is used, Flyway cannot
+# connect and the application fails at startup (Render then keeps the previous deploy running),
+# instead of silently connecting to some default database.
+# Pool, ddl-auto, Flyway, error and actuator settings are inherited from application.yml and the
+# security-relevant ones are repeated here so this file alone shows what production exposes.
+spring:
+  datasource:
+    # Supabase: Supavisor pooler in SESSION mode (port 5432), JDBC form, e.g.
+    # jdbc:postgresql://aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require
+    url: ${DB_URL}
+    # Pooler user has the form postgres.<project-ref>
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        # TLS is required even if the URL forgets it. A parameter written in DB_URL wins over this
+        # property (PostgreSQL JDBC driver rule); docker-compose.yml uses that to disable TLS for
+        # the local container, which has no certificate.
+        sslmode: require
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    # Migrations (including the demo seed V4) run on every boot; already applied ones are skipped.
+    enabled: true
+
+server:
+  port: ${PORT:8080}
+  # Render terminates HTTPS at its proxy and forwards plain HTTP with X-Forwarded-Proto/For/Host.
+  # "framework" (Spring's ForwardedHeaderFilter) makes redirects and absolute links use https and
+  # the public host. It trusts the headers from any client, which is safe here because the
+  # container is reachable only through Render's proxy, which overwrites them.
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # Sent only over HTTPS, invisible to JavaScript, not sent on cross-site POSTs.
+        secure: true
+        http-only: true
+        same-site: lax
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only /actuator/health; env, configprops, beans, heapdump etc. stay unexposed.
+        include: health
+  endpoint:
+    health:
+      # {"status":"UP"} only: no database name, version or disk details.
+      show-details: never
+
+logging:
+  level:
+    root: info
