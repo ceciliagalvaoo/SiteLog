@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--/*
+  Add / edit corrective action (Figma p. 20 "Add corrective action" modal, p. 21 with errors).
+  The modal is drawn as its own page here: the form needs the assignee list and must show its
+  validation errors after the POST without JavaScript; the card keeps the modal's look (icon,
+  eyebrow with the incident, title, subtitle, Cancel / primary action).
+  Routes: GET /incidents/{id}/corrective-actions/new -> POST /incidents/{id}/corrective-actions;
+          GET .../{actionId}/edit -> POST .../{actionId} (formAction).
+  Model: correctiveActionForm (description, assigneeId, dueDate yyyy-MM-dd, incidentVersion hidden),
+         incident (IncidentHeader), actionId (null = new), formAction, assignees (List<UserOption>), contextTitle.
+  Only SAFETY_SUPERVISOR reaches this page (service @PreAuthorize).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'incidents')}">
+<head><title th:text="(${actionId == null} ? #{correctiveAction.form.new.title} : #{correctiveAction.form.edit.title}) + ' · ' + #{app.name}">Add corrective action · SiteLog</title></head>
+<body>
+<div id="content" class="stack" th:with="isNew=${actionId == null}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.label}">
+		<a th:href="@{/incidents}" th:text="#{nav.incidents}">Incidents</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<a th:href="@{/incidents/{id}(id=${incident.id})}" th:text="${incident.title}">Fall from slab edge</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${isNew} ? #{correctiveAction.form.new.title} : #{correctiveAction.form.edit.title}">Add corrective action</span>
+	</nav>
+
+	<section class="card modal-page" aria-labelledby="action-title">
+		<div class="modal__head">
+			<span class="modal__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('plus')}"></svg></span>
+			<span th:replace="~{fragments/chip :: status('severity', ${incident.severity})}"></span>
+		</div>
+		<div class="modal__titles">
+			<p class="eyebrow" th:text="${incident.siteCode} + ' · ' + #{correctiveAction.eyebrow}">ZG-01 · Corrective action</p>
+			<h1 id="action-title" th:text="${isNew} ? #{correctiveAction.form.new.title} : #{correctiveAction.form.edit.title}">Add corrective action</h1>
+			<p class="text-muted" th:text="#{correctiveAction.form.lead}">Assign clear follow-up work and a realistic due date.</p>
+			<p class="text-muted" th:text="#{correctiveAction.form.forIncident(${incident.title})}">For incident: Fall from slab edge</p>
+		</div>
+
+		<form class="form" th:object="${correctiveActionForm}" novalidate method="post" th:action="@{${formAction}}">
+			<input type="hidden" th:field="*{incidentVersion}">
+			<th:block th:if="${#fields.hasErrors('*')}">
+				<div th:replace="~{fragments/flash :: flash('error', #{correctiveAction.form.error.title}, #{incident.form.error.body})}"></div>
+			</th:block>
+			<div th:replace="~{fragments/input :: textareaField('description', #{correctiveAction.field.description}, #{correctiveAction.field.description.placeholder}, true)}"></div>
+			<div th:replace="~{fragments/input :: selectField('assigneeId', #{correctiveAction.field.assignee.optional}, ${assignees}, 'id', 'fullName', #{correctiveAction.unassigned}, false)}"></div>
+			<div th:replace="~{fragments/input :: textField('dueDate', #{correctiveAction.field.dueDate}, 'date', null, true)}"></div>
+			<div class="form-actions">
+				<a class="btn btn--secondary" th:href="@{/incidents/{id}(id=${incident.id})}" th:text="#{common.cancel}">Cancel</a>
+				<button type="submit" class="btn btn--primary" th:text="${isNew} ? #{correctiveAction.form.submit} : #{common.saveChanges}">Add action</button>
+			</div>
+		</form>
+	</section>
+</div>
+</body>
+</html>

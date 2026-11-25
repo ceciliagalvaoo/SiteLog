@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<!--/*
+  Incident list (Figma p. 15 all sites, p. 32 site detail - incidents tab).
+  Routes: GET /incidents (every site) and GET /sites/{siteId}/incidents (one site; the site detail
+  tabs link here, so the page shows the site header and the tab bar with "Incidents" current).
+  Model: page (Page<IncidentListItem>), status / severity (current filters or null),
+         statuses, severities (enum values for the filter selects), listUrl (base URL of this list),
+         site (SiteListItem, only on the per-site list), contextTitle.
+  Filters: status and severity (GET, so the filtered list can be bookmarked; the pager keeps them).
+  Rows: title (the whole row is the link) + site code / reporter, occurred at, category,
+  severity chip, status chip. Below 640 px the table becomes stacked cards (table--stack).
+  "Report incident": only the SITE_MANAGER of the site (hasRole + @siteAccess), per-site list only -
+  an incident always belongs to the site it is reported from. Hiding is cosmetic: the service
+  checks the same rule with @PreAuthorize.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, ${site != null} ? 'sites' : 'incidents')}">
+<head><title th:text="(${site != null} ? ${site.name} + ' · ' : '') + #{incident.list.title} + ' · ' + #{app.name}">Incidents · SiteLog</title></head>
+<body>
+<div id="content" class="stack"
+     th:with="filtered=${status != null or severity != null},
+              canReport=${site != null and #authorization.expression('hasRole(''SITE_MANAGER'')') and @siteAccess.canManageSite(site.id)}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.label}">
+		<th:block th:if="${site != null}">
+			<a th:href="@{/sites}" th:text="#{nav.sites}">Sites</a>
+			<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+			<a th:href="@{/sites/{id}(id=${site.id})}" th:text="${site.name}">Residential Complex Lanište</a>
+			<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		</th:block>
+		<span aria-current="page" th:text="#{incident.list.title}">Incidents</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="${site != null} ? #{incident.list.eyebrow.site(${site.code})} : #{incident.list.eyebrow}">Safety management</p>
+			<h1 th:text="${site != null} ? ${site.name} : #{incident.list.title}">Incidents</h1>
+			<p class="lead" th:text="${site != null} ? #{incident.list.lead.site} : #{incident.list.lead.all}">Track, investigate and resolve safety events across all sites.</p>
+		</div>
+		<div class="page-header__actions" th:if="${canReport}">
+			<a class="btn btn--primary" th:href="@{/sites/{id}/incidents/new(id=${site.id})}">
+				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+				<span th:text="#{incident.report}">Report incident</span>
+			</a>
+		</div>
+	</div>
+
+	<!--/* per-site list: the site detail tab bar, "Incidents" current (p. 32) */-->
+	<nav class="tabs" th:if="${site != null}" th:aria-label="#{site.detail.tabs}">
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id})}" th:text="#{site.tab.overview}">Overview</a>
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='logs')}" th:text="#{site.tab.logs}">Daily logs</a>
+		<a class="tabs__link" th:href="@{/sites/{id}/incidents(id=${site.id})}" aria-current="page">
+			<span th:text="#{site.tab.incidents}">Incidents</span>
+			<span class="tabs__count" th:text="${page.totalElements}">3</span>
+		</a>
+		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='compliance')}" th:text="#{site.tab.compliance}">Compliance</a>
+	</nav>
+
+	<form class="filter-bar" method="get" th:action="@{${listUrl}}" role="search" th:aria-label="#{incident.filter.label}">
+		<label class="field">
+			<span class="field__label" th:text="#{incident.field.status}">Status</span>
+			<select class="control" name="status">
+				<option value="" th:text="#{incident.filter.allStatuses}">All statuses</option>
+				<option th:each="s : ${statuses}" th:value="${s}" th:selected="${s == status}"
+				        th:text="#{${'status.incident.' + s}}">Reported</option>
+			</select>
+		</label>
+		<label class="field">
+			<span class="field__label" th:text="#{incident.field.severity}">Severity</span>
+			<select class="control" name="severity">
+				<option value="" th:text="#{incident.filter.allSeverities}">All severities</option>
+				<option th:each="s : ${severities}" th:value="${s}" th:selected="${s == severity}"
+				        th:text="#{${'status.severity.' + s}}">High</option>
+			</select>
+		</label>
+		<div class="filter-bar__actions">
+			<button type="submit" class="btn btn--secondary" th:text="#{incident.filter.apply}">Filter</button>
+			<a class="btn btn--ghost" th:if="${filtered}" th:href="@{${listUrl}}" th:text="#{common.clearFilter}">Clear filter</a>
+		</div>
+		<p class="text-muted" th:text="#{incident.list.lead(${page.totalElements})}">5 incidents</p>
+	</form>
+
+	<div class="card" th:if="${page.empty}">
+		<div th:replace="~{fragments/table-row :: emptyState(
+		         ${filtered} ? #{incident.list.empty.title} : #{incident.list.none.title},
+		         ${filtered} ? #{incident.list.empty.body} : #{incident.list.none.body},
+		         ${canReport and !filtered} ? #{incident.report} : null,
+		         ${site != null} ? @{/sites/{id}/incidents/new(id=${site.id})} : null)}"></div>
+	</div>
+
+	<div class="table-wrap" th:unless="${page.empty}">
+		<table class="table table--stack table--incidents">
+			<caption class="visually-hidden" th:text="#{incident.list.title}">Incidents</caption>
+			<thead th:replace="~{fragments/table-row :: header(${ {'incident.field.title', 'incident.field.occurredAt', 'incident.field.category', 'incident.field.severity', 'incident.field.status', ''} })}"></thead>
+			<tbody>
+			<tr th:each="i : ${page}">
+				<td class="cell--title" th:attr="data-label=#{incident.field.title}">
+					<span class="cell-title">
+						<a th:href="@{/incidents/{id}(id=${i.id})}" th:text="${i.title}">Fall from slab edge</a>
+						<span class="cell-title__sub" th:text="#{incident.list.sub(${i.siteCode}, ${i.reportedByName})}">ZG-01 · reported by Marko Kovačević</span>
+					</span>
+				</td>
+				<td th:replace="~{fragments/table-row :: cell(#{incident.field.occurredAt}, ${#temporals.format(i.occurredAt, #messages.msg('format.datetime'))}, null)}"></td>
+				<td th:replace="~{fragments/table-row :: cell(#{incident.field.category}, #{${'incident.category.' + i.category}}, null)}"></td>
+				<td th:replace="~{fragments/table-row :: chipCell(#{incident.field.severity}, 'severity', ${i.severity})}"></td>
+				<td th:replace="~{fragments/table-row :: chipCell(#{incident.field.status}, 'incident', ${i.status})}"></td>
+				<td class="cell--chevron" aria-hidden="true"><svg th:replace="~{fragments/icon :: iconSm('chevron-right')}"></svg></td>
+			</tr>
+			</tbody>
+		</table>
+	</div>
+
+	<nav th:replace="~{fragments/pagination :: pager(${page}, ${listUrl} + '?status=' + (${status} ?: '') + '&severity=' + (${severity} ?: ''))}"></nav>
+</div>
+</body>
+</html>

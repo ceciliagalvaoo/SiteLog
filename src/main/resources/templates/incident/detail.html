@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<!--/*
+  Incident detail (Figma p. 19: summary strip, "What happened", investigation, corrective actions,
+  status timeline). Route: GET /incidents/{id}. Model: incident (IncidentDetails), contextTitle.
+  Workflow buttons (each a POST with the page's version; hiding is cosmetic, the service checks):
+    Edit          incident.editable() and (SAFETY_SUPERVISOR, or SITE_MANAGER of the site while REPORTED)
+    Start review  canStartReview()  and canHandle
+    Sign off      UNDER_REVIEW      and canHandle; disabled while canSignOff() is false (AR2 fields missing)
+    Close         SIGNED_OFF        and canHandle; disabled while a corrective action is not done
+    Delete        deletable()       and SITE_MANAGER of the site (confirmation modal)
+    canHandle = hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isLowSeverityOnOwnSite(id))
+  Only the next valid action for the status is shown (the prototype draws all three greyed out).
+  Corrective actions: add / edit / remove for SAFETY_SUPERVISOR (until CLOSED); "Mark as done" also
+  for the assignee (@incidentAccess.isAssignee(actionId)). OVERDUE is shown for an open action past
+  its due date (a.overdue) even before the nightly job marks it.
+  AR2: for HIGH / CRITICAL an amber notice says a supervisor sign-off is required and lists the
+  missing fields (missingSeverityFields); those fields are marked "missing" in the investigation card.
+  Side panel: the four status steps (done / current / pending; actor and time from the recorded
+  action when there is one) and every recorded action (incident.timeline, oldest first).
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'incidents')}">
+<head><title th:text="${incident.title} + ' · ' + #{app.name}">Incident · SiteLog</title></head>
+<body>
+<div id="content" class="stack"
+     th:with="isSupervisor=${#authorization.expression('hasRole(''SAFETY_SUPERVISOR'')')},
+              isManager=${#authorization.expression('hasRole(''SITE_MANAGER'')')},
+              ownSite=${isManager and @incidentAccess.isOnOwnSite(incident.id)},
+              canHandle=${isSupervisor or (isManager and @incidentAccess.isLowSeverityOnOwnSite(incident.id))},
+              canEdit=${incident.editable() and (isSupervisor or (ownSite and incident.status.name() == 'REPORTED'))},
+              hasMissing=${!#lists.isEmpty(incident.missingSeverityFields)},
+              occurred=${#temporals.format(incident.occurredAt, #messages.msg('format.datetime'))}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.label}">
+		<a th:href="@{/incidents}" th:text="#{nav.incidents}">Incidents</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<a th:href="@{/sites/{id}/incidents(id=${incident.siteId})}" th:text="${incident.siteName}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="${incident.title}">Fall from slab edge</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{incident.detail.eyebrow(${incident.siteCode})}">Incident · ZG-01</p>
+			<h1 class="title-record" th:text="${incident.title}">Fall from slab edge</h1>
+			<p class="lead" th:text="#{incident.detail.lead(${incident.siteName}, ${incident.reportedByName}, ${occurred})}">Residential Complex Lanište · Reported by Marko Kovačević · 27 Oct 2026, 13:40</p>
+		</div>
+		<div class="page-header__actions page-header__actions--center">
+			<button type="button" class="btn btn--ghost btn--ghost-danger" th:if="${ownSite and incident.deletable()}"
+			        data-modal-open="delete-incident" th:text="#{incident.delete.confirm}">Delete incident</button>
+			<a class="btn btn--secondary" th:if="${canEdit}" th:href="@{/incidents/{id}/edit(id=${incident.id})}" th:text="#{common.edit}">Edit</a>
+			<form th:if="${canHandle and incident.canStartReview()}" th:action="@{/incidents/{id}/start-review(id=${incident.id})}" method="post">
+				<input type="hidden" name="version" th:value="${incident.version}">
+				<button type="submit" class="btn btn--primary" th:text="#{incident.action.startReview}">Start review</button>
+			</form>
+			<form th:if="${canHandle and incident.status.name() == 'UNDER_REVIEW'}" th:action="@{/incidents/{id}/sign-off(id=${incident.id})}" method="post">
+				<input type="hidden" name="version" th:value="${incident.version}">
+				<button type="submit" class="btn btn--primary" th:disabled="${!incident.canSignOff()}"
+				        th:attr="aria-describedby=${hasMissing} ? 'missing-fields'"
+				        th:text="#{incident.action.signOff}">Sign off</button>
+			</form>
+			<form th:if="${canHandle and incident.status.name() == 'SIGNED_OFF'}" th:action="@{/incidents/{id}/close(id=${incident.id})}" method="post">
+				<input type="hidden" name="version" th:value="${incident.version}">
+				<button type="submit" class="btn btn--primary" th:disabled="${!incident.canClose()}"
+				        th:attr="aria-describedby=${!incident.canClose()} ? 'close-hint'"
+				        th:text="#{incident.action.close}">Close incident</button>
+			</form>
+		</div>
+	</div>
+
+	<!--/* AR2: High / Critical still open - a safety supervisor must sign off; list what is missing */-->
+	<div class="notice notice--warning" role="note" id="missing-fields"
+	     th:if="${incident.requiresSupervisorSignOff() and incident.status.open}">
+		<span class="notice__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('alert')}"></svg></span>
+		<div class="notice__text">
+			<strong th:text="${hasMissing} ? #{incident.signOff.missing.title} : #{incident.signOff.pending.title}">Waiting for a safety supervisor's sign-off</strong>
+			<p th:text="#{incident.detail.supervisorRequired}">High and Critical incidents must be signed off by a safety supervisor before they can be closed.</p>
+			<th:block th:if="${hasMissing}">
+				<p th:text="#{incident.signOff.missing.body}">Sign off stays disabled until these fields are filled in:</p>
+				<ul class="notice__list">
+					<li th:each="f : ${incident.missingSeverityFields}" th:text="#{${'incident.field.' + f}}">Root cause</li>
+				</ul>
+			</th:block>
+		</div>
+		<div class="notice__actions" th:if="${hasMissing and canEdit}">
+			<a class="btn btn--secondary" th:href="@{/incidents/{id}/edit(id=${incident.id})}" th:text="#{incident.detail.completeInvestigation}">Complete investigation</a>
+		</div>
+	</div>
+	<th:block th:if="${incident.status.name() == 'SIGNED_OFF' and !incident.canClose()}">
+		<div class="notice" role="note" id="close-hint">
+			<span class="notice__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('info')}"></svg></span>
+			<div class="notice__text">
+				<strong th:text="#{incident.close.blocked.title}">Corrective actions still open</strong>
+				<p th:text="#{incident.flash.close.openActions}">Complete every corrective action before closing the incident.</p>
+			</div>
+		</div>
+	</th:block>
+
+	<dl class="summary-strip">
+		<div><dt th:text="#{incident.field.severity}">Severity</dt>
+			<dd><span th:replace="~{fragments/chip :: status('severity', ${incident.severity})}"></span></dd></div>
+		<div><dt th:text="#{incident.field.status}">Status</dt>
+			<dd><span th:replace="~{fragments/chip :: status('incident', ${incident.status})}"></span></dd></div>
+		<div><dt th:text="#{incident.field.occurredAt}">Occurred at</dt>
+			<dd th:text="${occurred}">27 Oct 2026, 13:40</dd></div>
+		<div><dt th:text="#{incident.field.site}">Site</dt>
+			<dd><a th:href="@{/sites/{id}(id=${incident.siteId})}" th:text="${incident.siteCode} + ' · ' + ${incident.siteName}">ZG-01 · Residential Complex Lanište</a></dd></div>
+		<div><dt th:text="#{incident.field.dailyLog}">Linked daily log</dt>
+			<dd><a th:if="${incident.dailyLogId != null}" th:href="@{/daily-logs/{id}(id=${incident.dailyLogId})}"
+			       th:text="${#temporals.format(incident.dailyLogDate, #messages.msg('format.date'))}">27 Oct 2026</a>
+				<span th:if="${incident.dailyLogId == null}" th:text="#{common.notSet}">Not set</span></dd></div>
+	</dl>
+
+	<div class="detail-grid">
+		<div class="detail-grid__main">
+			<section class="card" aria-labelledby="record-title">
+				<div class="card__header">
+					<p class="eyebrow" th:text="#{incident.detail.record.eyebrow}">Incident record</p>
+					<h2 id="record-title" th:text="#{incident.detail.record.title}">What happened</h2>
+				</div>
+				<dl class="facts facts--caps facts--grid">
+					<div><dt th:text="#{incident.field.category}">Category</dt>
+						<dd th:text="#{${'incident.category.' + incident.category}}">Fall from height</dd></div>
+					<div><dt th:text="#{incident.field.affectedCrews}">Affected crews</dt>
+						<dd>
+							<ul class="tag-list" th:unless="${#lists.isEmpty(incident.affectedCrews)}">
+								<li class="tag" th:each="crew : ${incident.affectedCrews}" th:text="${crew.name}">Kovač Formwork</li>
+							</ul>
+							<span th:if="${#lists.isEmpty(incident.affectedCrews)}" th:text="#{common.notSet}">Not set</span>
+						</dd></div>
+				</dl>
+				<div>
+					<h3 class="facts__label" th:text="#{incident.field.description}">Description</h3>
+					<p class="prose" th:text="${incident.description}">A steel fixer fell about 2 m from the level 3 slab edge.</p>
+				</div>
+			</section>
+
+			<section class="card" aria-labelledby="investigation-title">
+				<div class="card__header">
+					<p class="eyebrow" th:text="${incident.requiresSupervisorSignOff()} ? #{incident.detail.investigation.eyebrow.required} : #{incident.detail.investigation.eyebrow}">Required investigation</p>
+					<h2 id="investigation-title" th:text="#{incident.form.card.severity}">Investigation</h2>
+				</div>
+				<dl class="facts facts--caps facts--grid">
+					<div th:each="f : ${ {'rootCause', 'witnesses', 'medicalTreatment'} }"
+					     th:with="value=${f == 'rootCause' ? incident.rootCause : (f == 'witnesses' ? incident.witnesses : incident.medicalTreatment)},
+					              missing=${#lists.contains(incident.missingSeverityFields, f)}">
+						<dt th:text="#{${'incident.field.' + f}}">Root cause</dt>
+						<dd class="prose" th:classappend="${missing} ? 'is-missing'"
+						    th:text="${missing} ? #{incident.detail.missing} : (${#strings.isEmpty(value)} ? #{common.notSet} : ${value})">Edge protection removed for rebar delivery.</dd>
+					</div>
+					<div th:with="missing=${#lists.contains(incident.missingSeverityFields, 'authorityNotified')}">
+						<dt th:text="#{incident.field.authorityNotified}">Authority notified</dt>
+						<dd th:classappend="${missing} ? 'is-missing'"
+						    th:text="${missing} ? #{incident.detail.missing} : (${incident.authorityNotified == null} ? #{common.notSet} : (${incident.authorityNotified} ? #{common.yes} : #{common.no}))">Yes</dd>
+					</div>
+				</dl>
+			</section>
+
+			<section class="card" aria-labelledby="actions-title">
+				<div class="card__header card__header--row">
+					<div class="card__header">
+						<p class="eyebrow" th:text="#{correctiveAction.followUp}">Follow-up</p>
+						<h2 id="actions-title" th:text="#{correctiveAction.title(${#lists.size(incident.correctiveActions)})}">2 corrective actions</h2>
+					</div>
+					<a class="btn btn--primary" th:if="${isSupervisor and incident.actionsEditable()}"
+					   th:href="@{/incidents/{id}/corrective-actions/new(id=${incident.id})}">
+						<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+						<span th:text="#{correctiveAction.add}">Add corrective action</span>
+					</a>
+				</div>
+				<p class="text-muted" th:if="${#lists.isEmpty(incident.correctiveActions)}" th:text="#{correctiveAction.empty}">No corrective actions yet.</p>
+				<div class="table-wrap table-wrap--flush" th:unless="${#lists.isEmpty(incident.correctiveActions)}">
+					<table class="table table--stack table--actions">
+						<caption class="visually-hidden" th:text="#{correctiveAction.section.title}">Corrective actions</caption>
+						<thead th:replace="~{fragments/table-row :: header(${ {'correctiveAction.field.description', 'correctiveAction.field.assignee', 'correctiveAction.field.dueDate', 'incident.field.status', ''} })}"></thead>
+						<tbody>
+						<tr th:each="a : ${incident.correctiveActions}"
+						    th:with="mayComplete=${incident.actionsEditable() and !a.done() and (isSupervisor or @incidentAccess.isAssignee(a.id))},
+						             mayChange=${isSupervisor and incident.actionsEditable() and !a.done()}">
+							<td th:replace="~{fragments/table-row :: cell(#{correctiveAction.field.description}, ${a.description}, 'strong')}"></td>
+							<td th:replace="~{fragments/table-row :: cell(#{correctiveAction.field.assignee}, ${a.assigneeName} ?: #{correctiveAction.unassigned}, null)}"></td>
+							<td th:replace="~{fragments/table-row :: cell(#{correctiveAction.field.dueDate}, ${#temporals.format(a.dueDate, #messages.msg('format.date'))}, null)}"></td>
+							<td th:replace="~{fragments/table-row :: chipCell(#{incident.field.status}, 'action', ${a.overdue and !a.done()} ? 'OVERDUE' : ${a.status})}"></td>
+							<td class="cell--row-actions" th:attr="data-label=#{common.actions}">
+								<div class="row-actions" th:if="${mayComplete or mayChange}">
+									<form th:if="${mayComplete}" th:action="@{/incidents/{i}/corrective-actions/{a}/done(i=${incident.id}, a=${a.id})}" method="post">
+										<input type="hidden" name="version" th:value="${incident.version}">
+										<button type="submit" class="btn btn--secondary btn--sm" th:text="#{correctiveAction.markDone}"
+										        th:attr="aria-label=#{correctiveAction.markDone.label(${a.description})}">Mark as done</button>
+									</form>
+									<a th:if="${mayChange}" class="link-button" th:href="@{/incidents/{i}/corrective-actions/{a}/edit(i=${incident.id}, a=${a.id})}"
+									   th:text="#{common.edit}" th:attr="aria-label=#{correctiveAction.edit.label(${a.description})}">Edit</a>
+									<form th:if="${mayChange}" th:action="@{/incidents/{i}/corrective-actions/{a}/delete(i=${incident.id}, a=${a.id})}" method="post">
+										<input type="hidden" name="version" th:value="${incident.version}">
+										<button type="submit" class="link-button link-button--danger" th:text="#{common.remove}"
+										        th:attr="aria-label=#{correctiveAction.remove.label(${a.description})}">Remove</button>
+									</form>
+								</div>
+							</td>
+						</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+		</div>
+
+		<aside class="detail-grid__side">
+			<section class="card" aria-labelledby="timeline-title">
+				<h2 id="timeline-title" th:text="#{incident.timeline.status}">Status timeline</h2>
+				<ol class="timeline">
+					<li class="timeline__item"
+					    th:each="step, st : ${ {'REPORTED', 'UNDER_REVIEW', 'SIGNED_OFF', 'CLOSED'} }"
+					    th:with="stepAction=${ {'INCIDENT_REPORTED', 'INCIDENT_REVIEW_STARTED', 'INCIDENT_SIGNED_OFF', 'INCIDENT_CLOSED'}[st.index] },
+					             reached=${st.index <= incident.status.ordinal()},
+					             current=${st.index == incident.status.ordinal() and step != 'CLOSED'}"
+					    th:classappend="${current} ? 'is-current' : (${reached} ? 'is-done' : 'is-pending')"
+					    th:attr="aria-current=${current} ? 'step'">
+						<th:block th:with="entry=${incident.timeline.$[action.name() == '__${stepAction}__']}">
+							<span class="timeline__title" th:text="#{${'status.incident.' + step}}">Reported</span>
+							<span class="timeline__meta" th:if="${reached and entry != null}"
+							      th:text="(${entry.actorName} ?: #{audit.actor.system}) + ' · ' + ${#temporals.format(entry.occurredAt, #messages.msg('format.datetime'))}">Marko Kovačević · 27 Oct 2026, 13:45</span>
+							<span class="timeline__meta" th:if="${reached and entry == null}"
+							      th:text="${step == 'SIGNED_OFF' and incident.signedOffByName != null}
+							               ? ${incident.signedOffByName} + ' · ' + ${#temporals.format(incident.signedOffAt, #messages.msg('format.datetime'))}
+							               : (${step == 'REPORTED'} ? ${incident.reportedByName} : (${current} ? #{incident.timeline.current} : #{incident.timeline.done}))">Marko Kovačević</span>
+							<span class="timeline__meta" th:unless="${reached}" th:text="#{incident.timeline.pending}">Pending</span>
+						</th:block>
+					</li>
+				</ol>
+				<p class="side-note" th:if="${incident.requiresSupervisorSignOff()}" th:text="#{incident.signOff.supervisorOnly}">"Sign off" is available to Safety Supervisors only.</p>
+			</section>
+
+			<section class="card" aria-labelledby="activity-title">
+				<h2 id="activity-title" th:text="#{incident.timeline.title}">Timeline</h2>
+				<p class="text-muted" th:if="${#lists.isEmpty(incident.timeline)}" th:text="#{history.actions.empty}">No recorded actions yet.</p>
+				<ol class="timeline" th:unless="${#lists.isEmpty(incident.timeline)}">
+					<li class="timeline__item is-done" th:each="t : ${incident.timeline}">
+						<span class="timeline__title" th:text="#{${t.messageKey}}">Reported</span>
+						<span class="timeline__meta">
+							<th:block th:text="${t.actorName} ?: #{audit.actor.system}">Marko Kovačević</th:block> ·
+							<time th:datetime="${t.occurredAt}" th:text="${#temporals.format(t.occurredAt, #messages.msg('format.datetime'))}">27 Oct 2026, 13:45</time>
+						</span>
+					</li>
+				</ol>
+			</section>
+		</aside>
+	</div>
+
+	<th:block th:if="${ownSite and incident.deletable()}">
+		<dialog th:replace="~{fragments/modal :: confirm('delete-incident', ${incident.siteCode}, #{incident.delete.title}, #{incident.delete.subtitle}, ~{incident/detail :: #delete-incident-form})}">
+			<form id="delete-incident-form" class="form-actions" th:action="@{/incidents/{id}/delete(id=${incident.id})}" method="post">
+				<input type="hidden" name="version" th:value="${incident.version}">
+				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+				<button type="submit" class="btn btn--danger" th:text="#{incident.delete.confirm}">Delete incident</button>
+			</form>
+		</dialog>
+	</th:block>
+</div>
+</body>
+</html>

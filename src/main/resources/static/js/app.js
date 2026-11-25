@@ -5,6 +5,9 @@
  *            dialog[data-open-on-load] opens on page load (validation errors after a POST)
  *  - flash:  [data-flash-close] removes its flash message
  *  - menus:  the notification bell and user menu (<details>) close on Escape and outside click
+ *  - incident form: choosing High / Critical marks the investigation section as required at once
+ *            ([data-severity-select] around the select, [data-investigation] on the section); the
+ *            server renders the same state from the submitted severity and validates the rule (AR2)
  */
 (function () {
 	'use strict';
@@ -42,6 +45,18 @@
 				menu.removeAttribute('open');
 			}
 		});
+	});
+
+	document.addEventListener('change', function (event) {
+		var severity = event.target.closest('[data-severity-select]');
+		if (!severity || event.target.tagName !== 'SELECT') {
+			return;
+		}
+		var section = document.querySelector('[data-investigation]');
+		if (section) {
+			var value = event.target.value;
+			section.classList.toggle('investigation--required', value === 'HIGH' || value === 'CRITICAL');
+		}
 	});
 
 	document.addEventListener('keydown', function (event) {

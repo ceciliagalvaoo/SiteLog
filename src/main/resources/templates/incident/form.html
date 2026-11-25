@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<!--/*
+  Report incident (Figma p. 16 Low, p. 17 High with investigation fields, p. 18 High with
+  validation errors) and edit incident - one template.
+  Routes: GET /sites/{siteId}/incidents/new -> POST /sites/{siteId}/incidents;
+          GET /incidents/{id}/edit -> POST /incidents/{id} (formAction).
+  Model: incidentForm (IncidentForm), incidentId (null = new), formAction, site (SiteListItem),
+         dailyLogs (List<DailyLogOption>), crews (List<CrewOption>, active + already selected),
+         severities, categories, incident (IncidentDetails, edit only), contextTitle.
+  Field names: occurredAt (datetime-local, yyyy-MM-ddTHH:mm, sites' zone), title, description,
+  severity, category, dailyLogId (optional), affectedCrewIds (checkboxes), rootCause, witnesses,
+  medicalTreatment, authorityNotified (Yes / No radios), version (hidden, edit only).
+  AR2: root cause, witnesses, medical treatment and authority notified are required for HIGH and
+  CRITICAL (validation group HighSeverity + the service check). The "Investigation" section is
+  always in the form; for High / Critical it turns amber ("Investigation required") and shows the
+  required markers. The server renders that state from the submitted severity; app.js only
+  updates it while the user changes the select. Field errors appear on each missing field.
+  The site comes from the URL (an incident is reported from its site), so there is no site select.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'incidents')}">
+<head><title th:text="(${incidentId == null} ? #{incident.form.new.title} : #{incident.form.edit.title}) + ' · ' + #{app.name}">Report incident · SiteLog</title></head>
+<body>
+<div id="content" class="stack stack--narrow" th:with="isNew=${incidentId == null}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.label}">
+		<a th:href="@{/sites/{id}/incidents(id=${site.id})}" th:text="${site.name}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<th:block th:unless="${isNew}">
+			<a th:href="@{/incidents/{id}(id=${incidentId})}" th:text="${incident.title}">Fall from slab edge</a>
+			<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		</th:block>
+		<span aria-current="page" th:text="${isNew} ? #{incident.form.new.title} : #{incident.form.edit.title}">Report incident</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="${isNew} ? #{incident.form.eyebrow.new(${site.code})} : #{incident.form.eyebrow.edit(${site.code})}">ZG-01 · New safety record</p>
+			<h1 th:text="${isNew} ? #{incident.form.new.heading} : #{incident.form.edit.title}">Report an incident</h1>
+			<p class="lead" th:text="#{incident.form.lead}">Capture the known details now. The investigation can be updated as new information emerges.</p>
+		</div>
+	</div>
+
+	<form class="form" th:object="${incidentForm}" novalidate method="post" th:action="@{${formAction}}"
+	      th:with="highSeverity=${incidentForm.requiresExtendedFields()}">
+		<input type="hidden" th:field="*{version}" th:unless="${isNew}">
+		<th:block th:if="${#fields.hasErrors('*')}">
+			<div th:replace="~{fragments/flash :: flash('error', #{incident.form.error.title}, #{incident.form.error.body})}"></div>
+		</th:block>
+
+		<!--/* 1 - what happened, when and where */-->
+		<section class="card" aria-labelledby="incident-details-title">
+			<div class="step-header">
+				<span class="step-header__number" aria-hidden="true">1</span>
+				<div class="card__header">
+					<h2 id="incident-details-title" th:text="#{incident.form.card.details}">Incident details</h2>
+					<p class="card__subtitle" th:text="#{incident.form.card.details.subtitle}">What happened, when and where.</p>
+				</div>
+			</div>
+			<div class="form-grid form-grid--2">
+				<div th:replace="~{fragments/input :: textField('title', #{incident.field.title}, 'text', #{incident.field.title.placeholder}, true)}"></div>
+				<div th:replace="~{fragments/input :: textField('occurredAt', #{incident.field.occurredAt}, 'datetime-local', null, true)}"></div>
+				<div class="field">
+					<span class="field__label" th:text="#{incident.field.site}">Site</span>
+					<p class="control control--readonly" th:text="${site.code} + ' · ' + ${site.name}">ZG-01 · Residential Complex Lanište</p>
+				</div>
+				<div th:replace="~{fragments/input :: enumSelectField('category', #{incident.field.category}, ${categories}, 'incident.category', #{incident.field.category.empty}, true)}"></div>
+				<div data-severity-select>
+					<div th:replace="~{fragments/input :: enumSelectField('severity', #{incident.field.severity}, ${severities}, 'status.severity', #{incident.field.severity.empty}, true)}"></div>
+				</div>
+			</div>
+			<div th:replace="~{fragments/input :: textareaField('description', #{incident.field.description}, #{incident.field.description.placeholder}, true)}"></div>
+
+			<fieldset class="field" th:classappend="${#fields.hasErrors('affectedCrewIds')} ? 'field--error'">
+				<legend class="field__label" th:text="#{incident.field.affectedCrews}">Affected crews</legend>
+				<div class="crew-picks" th:unless="${#lists.isEmpty(crews)}">
+					<label class="crew-pick" th:each="crew : ${crews}">
+						<input type="checkbox" th:field="*{affectedCrewIds}" th:value="${crew.id}">
+						<span th:text="${crew.name}">Kovač Formwork</span>
+					</label>
+				</div>
+				<p class="field__hint" th:if="${#lists.isEmpty(crews)}" th:text="#{incident.field.affectedCrews.none}">No active crews.</p>
+				<p class="field__error" th:if="${#fields.hasErrors('affectedCrewIds')}" th:errors="*{affectedCrewIds}">Choose active crews only</p>
+			</fieldset>
+
+			<div class="field" th:classappend="${#fields.hasErrors('dailyLogId')} ? 'field--error'">
+				<label class="field__label" for="dailyLogId">
+					<span th:text="#{incident.field.dailyLog}">Linked daily log</span>
+					<span th:text="#{common.optional}">(optional)</span>
+				</label>
+				<select class="control" th:field="*{dailyLogId}"
+				        th:attr="aria-invalid=${#fields.hasErrors('dailyLogId')} ? 'true', aria-describedby=${#fields.hasErrors('dailyLogId')} ? 'dailyLogId-error'">
+					<option value="" th:text="#{incident.field.dailyLog.none}">No daily log</option>
+					<option th:each="log : ${dailyLogs}" th:value="${log.id}"
+					        th:text="${#temporals.format(log.logDate, #messages.msg('format.date'))} + ' · ' + #{${'status.log.' + log.status}}">29 Oct 2026 · Draft</option>
+				</select>
+				<p class="field__error" id="dailyLogId-error" th:if="${#fields.hasErrors('dailyLogId')}" th:errors="*{dailyLogId}">Choose a daily log of this site</p>
+			</div>
+		</section>
+
+		<!--/* 2 - investigation: required for High / Critical (AR2) */-->
+		<section class="card investigation" data-investigation aria-labelledby="investigation-title"
+		         th:classappend="${highSeverity} ? 'investigation--required'">
+			<div class="investigation__head">
+				<span class="notice__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('alert')}"></svg></span>
+				<div>
+					<h2 id="investigation-title" class="investigation__title">
+						<span class="investigation__text--required" th:text="#{incident.form.investigation.required}">Investigation required</span>
+						<span class="investigation__text--optional" th:text="#{incident.form.card.severity}">Investigation</span>
+					</h2>
+					<p class="investigation__hint">
+						<span class="investigation__text--required" th:text="#{incident.form.investigation.required.hint}">High and Critical incidents need these details and a safety supervisor sign-off.</span>
+						<span class="investigation__text--optional" th:text="#{incident.form.investigation.optional.hint}">Optional for Low and Medium incidents. Required when the severity is High or Critical.</span>
+					</p>
+				</div>
+			</div>
+			<div class="investigation__body">
+				<div class="field" th:classappend="${#fields.hasErrors('rootCause')} ? 'field--error'">
+					<label class="field__label" for="rootCause"><span th:text="#{incident.field.rootCause}">Root cause</span><span class="field__req" aria-hidden="true">*</span></label>
+					<textarea class="control" rows="4" th:field="*{rootCause}" th:placeholder="#{incident.field.rootCause.placeholder}"
+					          th:attr="aria-invalid=${#fields.hasErrors('rootCause')} ? 'true', aria-describedby=${#fields.hasErrors('rootCause')} ? 'rootCause-error'"></textarea>
+					<p class="field__error" id="rootCause-error" th:if="${#fields.hasErrors('rootCause')}" th:errors="*{rootCause}">Root cause is required</p>
+				</div>
+				<div class="form-grid form-grid--2">
+					<div class="field" th:classappend="${#fields.hasErrors('witnesses')} ? 'field--error'">
+						<label class="field__label" for="witnesses"><span th:text="#{incident.field.witnesses}">Witnesses</span><span class="field__req" aria-hidden="true">*</span></label>
+						<input class="control" type="text" th:field="*{witnesses}" th:placeholder="#{incident.field.witnesses.placeholder}"
+						       th:attr="aria-invalid=${#fields.hasErrors('witnesses')} ? 'true', aria-describedby=${#fields.hasErrors('witnesses')} ? 'witnesses-error'">
+						<p class="field__error" id="witnesses-error" th:if="${#fields.hasErrors('witnesses')}" th:errors="*{witnesses}">Enter witnesses or "None"</p>
+					</div>
+					<div class="field" th:classappend="${#fields.hasErrors('medicalTreatment')} ? 'field--error'">
+						<label class="field__label" for="medicalTreatment"><span th:text="#{incident.field.medicalTreatment}">Medical treatment</span><span class="field__req" aria-hidden="true">*</span></label>
+						<input class="control" type="text" th:field="*{medicalTreatment}" th:placeholder="#{incident.field.medicalTreatment.placeholder}"
+						       th:attr="aria-invalid=${#fields.hasErrors('medicalTreatment')} ? 'true', aria-describedby=${#fields.hasErrors('medicalTreatment')} ? 'medicalTreatment-error'">
+						<p class="field__error" id="medicalTreatment-error" th:if="${#fields.hasErrors('medicalTreatment')}" th:errors="*{medicalTreatment}">Enter treatment or "None"</p>
+					</div>
+				</div>
+				<fieldset class="field" th:classappend="${#fields.hasErrors('authorityNotified')} ? 'field--error'"
+				          th:attr="aria-describedby=${#fields.hasErrors('authorityNotified')} ? 'authorityNotified-error'">
+					<legend class="field__label"><span th:text="#{incident.field.authorityNotified.question}">Authority notified?</span><span class="field__req" aria-hidden="true">*</span></legend>
+					<div class="segmented">
+						<input class="segmented__input" type="radio" th:field="*{authorityNotified}" value="true">
+						<label class="segmented__option" th:for="${#ids.prev('authorityNotified')}" th:text="#{common.yes}">Yes</label>
+						<input class="segmented__input" type="radio" th:field="*{authorityNotified}" value="false">
+						<label class="segmented__option" th:for="${#ids.prev('authorityNotified')}" th:text="#{common.no}">No</label>
+					</div>
+					<p class="field__error" id="authorityNotified-error" th:if="${#fields.hasErrors('authorityNotified')}" th:errors="*{authorityNotified}">Select Yes or No</p>
+				</fieldset>
+			</div>
+		</section>
+
+		<div class="form-actions form-actions--sticky">
+			<a class="btn btn--secondary" th:href="${isNew} ? @{/sites/{id}/incidents(id=${site.id})} : @{/incidents/{id}(id=${incidentId})}" th:text="#{common.cancel}">Cancel</a>
+			<button type="submit" class="btn btn--primary" th:text="${isNew} ? #{incident.form.submit} : #{common.saveChanges}">Report incident</button>
+		</div>
+	</form>
+</div>
+</body>
+</html>

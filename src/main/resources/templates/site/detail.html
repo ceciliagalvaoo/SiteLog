@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <!--/*
-  Site detail (Figma p. 29 overview, p. 31 daily logs, p. 31b daily logs empty, p. 32 incidents,
-  p. 33 compliance; p. 4 is the overview with the "Daily log saved" flash). One template, one tab
-  per request (?tab=overview|logs|incidents|compliance): every tab is a real link, no JS.
+  Site detail (Figma p. 29 overview, p. 31 daily logs, p. 31b daily logs empty, p. 33 compliance;
+  p. 4 is the overview with the "Daily log saved" flash). One template, one tab per request
+  (?tab=overview|logs|compliance): every tab is a real link, no JS. The Incidents tab (p. 32) is
+  the site's incident list, incident/list.html at /sites/{id}/incidents.
   Model: site (SiteDetails with the KPIs), tab, logs (Page<DailyLogSummary>), contextTitle.
   Delete: confirmation modal (no frame - built from the Modal component); when the site holds
   records the modal explains why it cannot be deleted instead of offering the button.
@@ -49,7 +50,7 @@
 			<span th:text="#{site.tab.logs}">Daily logs</span>
 			<span class="tabs__count" th:text="${site.dailyLogCount}">4</span>
 		</a>
-		<a class="tabs__link" th:href="@{/sites/{id}(id=${site.id}, tab='incidents')}" th:aria-current="${tab == 'incidents'} ? 'page'">
+		<a class="tabs__link" th:href="@{/sites/{id}/incidents(id=${site.id})}" th:aria-current="${tab == 'incidents'} ? 'page'">
 			<span th:text="#{site.tab.incidents}">Incidents</span>
 			<span class="tabs__count" th:text="${site.openIncidentCount}">1</span>
 		</a>
@@ -126,9 +127,11 @@
 		<nav th:replace="~{fragments/pagination :: pager(${logs}, @{/sites/{id}(id=${site.id}, tab='logs')})}"></nav>
 	</th:block>
 
-	<!-- ============================================================ incidents / compliance (screens of M3) -->
+	<!-- ============================================================ incidents / compliance
+	     The Incidents tab links to the site's incident list (/sites/{id}/incidents, p. 32), which
+	     repeats this header and tab bar; ?tab=incidents (old links) points there. -->
 	<div class="card" th:if="${tab == 'incidents'}">
-		<div th:replace="~{fragments/table-row :: emptyState(#{site.incidents.title(${site.openIncidentCount})}, #{site.incidents.body}, null, null)}"></div>
+		<div th:replace="~{fragments/table-row :: emptyState(#{site.incidents.title(${site.openIncidentCount})}, #{site.incidents.body}, #{site.incidents.open}, @{/sites/{id}/incidents(id=${site.id})})}"></div>
 	</div>
 	<div class="card" th:if="${tab == 'compliance'}">
 		<div th:replace="~{fragments/table-row :: emptyState(#{site.compliance.title(${site.openCorrectiveActionCount})}, #{site.compliance.body}, null, null)}"></div>
