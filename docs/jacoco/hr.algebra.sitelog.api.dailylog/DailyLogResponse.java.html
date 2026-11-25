@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">DailyLogResponse.java</span></div><h1>DailyLogResponse.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.List;
+
+import hr.algebra.sitelog.dailylog.domain.LogStatus;
+import hr.algebra.sitelog.dailylog.domain.Weather;
+import hr.algebra.sitelog.dailylog.service.DailyLogDetails;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/** The whole DailyLog aggregate: the log, who signed it, its work entries and crew rows. */
+@Schema(description = &quot;Daily log with its work entries and crew rows&quot;)
+<span class="fc" id="L15">public record DailyLogResponse(</span>
+		Long id,
+		Long siteId,
+		String siteCode,
+		String siteName,
+		LocalDate logDate,
+		@Schema(description = &quot;DRAFT, SIGNED_OFF or REOPENED&quot;) LogStatus status,
+		@Schema(description = &quot;Incremented by every approved reopen&quot;) int revision,
+		Weather weather,
+		String notes,
+		String signedOffByName,
+		@Schema(description = &quot;Sign-off time with the sites' UTC offset&quot;) OffsetDateTime signedOffAt,
+		@Schema(description = &quot;Optimistic-locking version: send it back on PUT, DELETE, sign-off and child changes&quot;)
+		Long version,
+		@Schema(description = &quot;False when SIGNED_OFF: the log is locked until a reopen is approved&quot;) boolean editable,
+		@Schema(description = &quot;True only for a DRAFT log without incident or reopen history&quot;) boolean deletable,
+		BigDecimal totalHours,
+		long crewCount,
+		List&lt;WorkEntryResponse&gt; workEntries) {
+
+	static DailyLogResponse of(DailyLogDetails log) {
+<span class="fc" id="L36">		return new DailyLogResponse(log.id(), log.siteId(), log.siteCode(), log.siteName(), log.logDate(),</span>
+<span class="fc" id="L37">				log.status(), log.revision(), log.weather(), log.notes(), log.signedOffByName(),</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">				log.signedOffAt() == null ? null : log.signedOffAt().toOffsetDateTime(), log.version(),</span>
+<span class="fc" id="L39">				log.editable(), log.deletable(), log.totalHours(), log.crewCount(),</span>
+<span class="fc" id="L40">				log.workEntries().stream().map(entry -&gt; WorkEntryResponse.of(entry, log.version())).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

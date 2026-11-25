@@ -48,53 +48,74 @@ public class LogReopenRequest extends BaseEntity {
 	@Column(name = &quot;decided_at&quot;)
 	private Instant decidedAt;
 
-<span class="pc" id="L51">	@Enumerated(EnumType.STRING)</span>
+<span class="fc" id="L51">	@Enumerated(EnumType.STRING)</span>
 	@Column(name = &quot;status&quot;, nullable = false, length = 10)
 	private ReopenStatus status = ReopenStatus.PENDING;
 
-<span class="fc" id="L55">	protected LogReopenRequest() {</span>
-<span class="fc" id="L56">	}</span>
+	/**
+	 * The supervisor's reason (V7): mandatory for REJECTED, optional for APPROVED, null while
+	 * PENDING ({@code ck_log_reopen_request_decision_note}).
+	 */
+	@Column(name = &quot;decision_note&quot;)
+	private String decisionNote;
 
-<span class="nc" id="L58">	public LogReopenRequest(DailyLog dailyLog, String reason, AppUser requestedBy, Instant requestedAt) {</span>
-<span class="nc" id="L59">		this.dailyLog = dailyLog;</span>
-<span class="nc" id="L60">		this.reason = reason;</span>
-<span class="nc" id="L61">		this.requestedBy = requestedBy;</span>
-<span class="nc" id="L62">		this.requestedAt = requestedAt;</span>
-<span class="nc" id="L63">	}</span>
+<span class="fc" id="L62">	protected LogReopenRequest() {</span>
+<span class="fc" id="L63">	}</span>
+
+<span class="fc" id="L65">	public LogReopenRequest(DailyLog dailyLog, String reason, AppUser requestedBy, Instant requestedAt) {</span>
+<span class="fc" id="L66">		this.dailyLog = dailyLog;</span>
+<span class="fc" id="L67">		this.reason = reason;</span>
+<span class="fc" id="L68">		this.requestedBy = requestedBy;</span>
+<span class="fc" id="L69">		this.requestedAt = requestedAt;</span>
+<span class="fc" id="L70">	}</span>
 
 	/** Records the decision; {@code ck_log_reopen_request_decision} requires both fields together. */
 	public void decide(ReopenStatus decision, AppUser decidedBy, Instant decidedAt) {
-<span class="nc" id="L67">		this.status = decision;</span>
-<span class="nc" id="L68">		this.approvedBy = decidedBy;</span>
-<span class="nc" id="L69">		this.decidedAt = decidedAt;</span>
-<span class="nc" id="L70">	}</span>
+<span class="nc" id="L74">		decide(decision, decidedBy, decidedAt, null);</span>
+<span class="nc" id="L75">	}</span>
+
+	/** Records the decision with the supervisor's note (mandatory for a rejection, checked by the service). */
+	public void decide(ReopenStatus decision, AppUser decidedBy, Instant decidedAt, String note) {
+<span class="fc" id="L79">		this.status = decision;</span>
+<span class="fc" id="L80">		this.approvedBy = decidedBy;</span>
+<span class="fc" id="L81">		this.decidedAt = decidedAt;</span>
+<span class="fc" id="L82">		this.decisionNote = note;</span>
+<span class="fc" id="L83">	}</span>
+
+	public boolean isPending() {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">		return status == ReopenStatus.PENDING;</span>
+	}
 
 	public DailyLog getDailyLog() {
-<span class="fc" id="L73">		return dailyLog;</span>
+<span class="fc" id="L90">		return dailyLog;</span>
 	}
 
 	public String getReason() {
-<span class="nc" id="L77">		return reason;</span>
+<span class="fc" id="L94">		return reason;</span>
 	}
 
 	public AppUser getRequestedBy() {
-<span class="fc" id="L81">		return requestedBy;</span>
+<span class="fc" id="L98">		return requestedBy;</span>
 	}
 
 	public AppUser getApprovedBy() {
-<span class="fc" id="L85">		return approvedBy;</span>
+<span class="fc" id="L102">		return approvedBy;</span>
 	}
 
 	public Instant getRequestedAt() {
-<span class="nc" id="L89">		return requestedAt;</span>
+<span class="fc" id="L106">		return requestedAt;</span>
 	}
 
 	public Instant getDecidedAt() {
-<span class="nc" id="L93">		return decidedAt;</span>
+<span class="fc" id="L110">		return decidedAt;</span>
 	}
 
 	public ReopenStatus getStatus() {
-<span class="fc" id="L97">		return status;</span>
+<span class="fc" id="L114">		return status;</span>
+	}
+
+	public String getDecisionNote() {
+<span class="fc" id="L118">		return decisionNote;</span>
 	}
 
 }

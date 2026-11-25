@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApiAuthenticationEntryPoint.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.security</a> &gt; <span class="el_source">ApiAuthenticationEntryPoint.java</span></div><h1>ApiAuthenticationEntryPoint.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.security;
+
+import java.io.IOException;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * Anonymous call to {@code /api/**}: 401 ProblemDetail. The screens keep the redirect to
+ * {@code /login}; an API client cannot follow a redirect to an HTML form, so it gets a status
+ * it can act on. {@code WWW-Authenticate} names the scheme the API uses (the session cookie
+ * created by the form login) - there is no Basic or Bearer authentication.
+ */
+<span class="fc" id="L19">public class ApiAuthenticationEntryPoint implements AuthenticationEntryPoint {</span>
+
+	static final String DETAIL = &quot;Sign in first: POST /login (form login) creates the session the API uses.&quot;;
+
+	@Override
+	public void commence(HttpServletRequest request, HttpServletResponse response,
+			AuthenticationException authException) throws IOException {
+<span class="fc" id="L26">		response.setHeader(HttpHeaders.WWW_AUTHENTICATE, &quot;FormBased realm=\&quot;SiteLog\&quot;&quot;);</span>
+<span class="fc" id="L27">		ProblemJson.write(request, response, HttpStatus.UNAUTHORIZED, DETAIL, &quot;error.401&quot;);</span>
+<span class="fc" id="L28">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

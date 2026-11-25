@@ -9,6 +9,16 @@
 	/** Domain event: a site manager asked to reopen a signed-off log. Sent to safety supervisors. */
 <span class="fc" id="L10">	REOPEN_REQUESTED,</span>
 	/** Domain event: a HIGH or CRITICAL incident was reported. Sent to safety supervisors. */
-<span class="fc" id="L12">	HIGH_SEVERITY_INCIDENT</span>
+<span class="fc" id="L12">	HIGH_SEVERITY_INCIDENT;</span>
+
+	/** Message key of the title, {@code notification.type.&lt;TYPE&gt;}. */
+	public String titleKey() {
+<span class="fc" id="L16">		return &quot;notification.type.&quot; + name();</span>
+	}
+
+	/** Message key of the body of notifications created since V7, {@code notification.body.&lt;TYPE&gt;}. */
+	public String bodyKey() {
+<span class="fc" id="L21">		return &quot;notification.body.&quot; + name();</span>
+	}
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CorrectiveActionApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.incident</a> &gt; <span class="el_source">CorrectiveActionApiController.java</span></div><h1>CorrectiveActionApiController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.incident;
+
+import java.net.URI;
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import hr.algebra.sitelog.api.docs.ApiDocs;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.incident.domain.CorrectiveAction;
+import hr.algebra.sitelog.incident.service.CorrectiveActionService;
+import hr.algebra.sitelog.incident.service.IncidentDetails;
+import hr.algebra.sitelog.incident.service.IncidentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+/**
+ * {@code /api/v1/incidents/{incidentId}/corrective-actions}: children of the Incident aggregate.
+ * Every change increments the incident's version (OPTIMISTIC_FORCE_INCREMENT in
+ * {@link CorrectiveActionService}), so the body carries {@code incidentVersion} and the response
+ * returns the new one - the same contract as work entries of a daily log.
+ *
+ * &lt;p&gt;Reads go through {@link IncidentService#getDetail} (any signed-in user, the actions are
+ * loaded with the incident in one query); the collection is bounded and not paged.
+ */
+@RestController
+@RequestMapping(&quot;/api/v1/incidents/{incidentId}/corrective-actions&quot;)
+@Tag(name = &quot;Corrective actions&quot;, description = &quot;&quot;&quot;
+		Corrective actions of an incident. Reading: any signed-in user. Adding, changing and deleting: \
+		SAFETY_SUPERVISOR; marking as done: a supervisor or the action's assignee. Not on a CLOSED \
+		incident; a DONE action is final.&quot;&quot;&quot;)
+public class CorrectiveActionApiController {
+
+	private final CorrectiveActionService actionService;
+
+	private final IncidentService incidentService;
+
+<span class="fc" id="L54">	public CorrectiveActionApiController(CorrectiveActionService actionService, IncidentService incidentService) {</span>
+<span class="fc" id="L55">		this.actionService = actionService;</span>
+<span class="fc" id="L56">		this.incidentService = incidentService;</span>
+<span class="fc" id="L57">	}</span>
+
+	@GetMapping
+	@Operation(summary = &quot;List the corrective actions of an incident&quot;, description = &quot;All actions of the incident (bounded, not paged).&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The corrective actions&quot;)
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public List&lt;CorrectiveActionResponse&gt; list(@PathVariable Long incidentId) {
+<span class="fc" id="L65">		IncidentDetails incident = incidentService.getDetail(incidentId);</span>
+<span class="fc" id="L66">		return incident.correctiveActions().stream()</span>
+<span class="fc" id="L67">			.map(action -&gt; CorrectiveActionResponse.of(action, incident.version()))</span>
+<span class="fc" id="L68">			.toList();</span>
+	}
+
+	@GetMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Get a corrective action&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The corrective action&quot;)
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such action on this incident&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public CorrectiveActionResponse get(@PathVariable Long incidentId, @PathVariable Long id) {
+<span class="nc" id="L77">		return response(incidentId, id);</span>
+	}
+
+	@PostMapping
+	@Operation(summary = &quot;Add a corrective action&quot;, description = &quot;SAFETY_SUPERVISOR only; the incident must not be CLOSED.&quot;)
+	@ApiResponse(responseCode = &quot;201&quot;, description = &quot;Created (status OPEN); Location points to the new action&quot;,
+			headers = @Header(name = &quot;Location&quot;, description = &quot;URL of the new corrective action&quot;))
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not a safety supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale incidentVersion, or the incident is closed&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_INCIDENT_VERSION)))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Due date in the past, or assignee not an active manager / supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_ACTION)))
+	public ResponseEntity&lt;CorrectiveActionResponse&gt; create(@PathVariable Long incidentId,
+			@Validated @RequestBody CorrectiveActionRequest request) {
+<span class="fc" id="L96">		Long id = actionService.create(incidentId, request.incidentVersion(), request.toCommand());</span>
+<span class="fc" id="L97">		URI location = ServletUriComponentsBuilder.fromCurrentContextPath()</span>
+<span class="fc" id="L98">			.path(&quot;/api/v1/incidents/{incidentId}/corrective-actions/{id}&quot;)</span>
+<span class="fc" id="L99">			.buildAndExpand(incidentId, id)</span>
+<span class="fc" id="L100">			.toUri();</span>
+<span class="fc" id="L101">		return ResponseEntity.created(location).body(response(incidentId, id));</span>
+	}
+
+	@PutMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Replace a corrective action&quot;, description = &quot;&quot;&quot;
+			SAFETY_SUPERVISOR only; not a DONE action. Moving the due date of an OVERDUE action to today \
+			or later makes it OPEN again.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The updated action (with the new incidentVersion)&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not a safety supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such action on this incident&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale incidentVersion, incident closed, or action already done&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = {
+					@ExampleObject(name = &quot;stale version&quot;, value = ApiDocs.CONFLICT_INCIDENT_VERSION),
+					@ExampleObject(name = &quot;action done&quot;, value = ApiDocs.CONFLICT_ACTION_DONE) }))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Due date in the past, or invalid assignee&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_ACTION)))
+	public CorrectiveActionResponse update(@PathVariable Long incidentId, @PathVariable Long id,
+			@Validated @RequestBody CorrectiveActionRequest request) {
+<span class="fc" id="L123">		actionService.update(incidentId, id, request.incidentVersion(), request.toCommand());</span>
+<span class="fc" id="L124">		return response(incidentId, id);</span>
+	}
+
+	@DeleteMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Delete a corrective action&quot;, description = &quot;SAFETY_SUPERVISOR only; not a DONE action.&quot;)
+	@ApiResponse(responseCode = &quot;204&quot;, description = &quot;Deleted&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing incidentVersion parameter&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not a safety supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such action on this incident&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale incidentVersion, incident closed, or action already done&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_ACTION_DONE)))
+	public ResponseEntity&lt;Void&gt; delete(@PathVariable Long incidentId, @PathVariable Long id,
+			@Parameter(description = &quot;Version of the incident the client last read&quot;, required = true)
+			@RequestParam Long incidentVersion) {
+<span class="fc" id="L141">		actionService.delete(incidentId, id, incidentVersion);</span>
+<span class="fc" id="L142">		return ResponseEntity.noContent().build();</span>
+	}
+
+	@PostMapping(&quot;/{id}/done&quot;)
+	@Operation(summary = &quot;Mark a corrective action as done&quot;, description = &quot;&quot;&quot;
+			OPEN / OVERDUE -&gt; DONE with the completion time. A safety supervisor or the action's assignee.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The completed action (with the new incidentVersion)&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing incidentVersion&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Neither a safety supervisor nor the assignee&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such action on this incident&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale incidentVersion, incident closed, or already done&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_ACTION_DONE)))
+	public CorrectiveActionResponse markDone(@PathVariable Long incidentId, @PathVariable Long id,
+			@Validated @RequestBody CorrectiveActionDoneRequest request) {
+<span class="fc" id="L159">		actionService.markDone(incidentId, id, request.incidentVersion());</span>
+<span class="fc" id="L160">		return response(incidentId, id);</span>
+	}
+
+	/** The action plus the incident's current version (incremented by the change just committed). */
+	private CorrectiveActionResponse response(Long incidentId, Long id) {
+<span class="fc" id="L165">		IncidentDetails incident = incidentService.getDetail(incidentId);</span>
+<span class="fc" id="L166">		return incident.correctiveActions().stream()</span>
+<span class="fc" id="L167">			.filter(action -&gt; action.id().equals(id))</span>
+<span class="fc" id="L168">			.findFirst()</span>
+<span class="fc" id="L169">			.map(action -&gt; CorrectiveActionResponse.of(action, incident.version()))</span>
+<span class="fc" id="L170">			.orElseThrow(() -&gt; new NotFoundException(CorrectiveAction.class, id));</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

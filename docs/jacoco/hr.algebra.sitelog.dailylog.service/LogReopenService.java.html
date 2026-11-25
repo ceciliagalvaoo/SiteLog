@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogReopenService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">LogReopenService.java</span></div><h1>LogReopenService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.audit.aspect.AuditedAction;
+import hr.algebra.sitelog.audit.domain.DomainActionType;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.InvalidTransitionException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.domain.LogReopenRequest;
+import hr.algebra.sitelog.dailylog.domain.LogStatus;
+import hr.algebra.sitelog.dailylog.domain.ReopenStatus;
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.dailylog.repository.LogReopenRequestRepository;
+import hr.algebra.sitelog.notification.domain.NotificationType;
+import hr.algebra.sitelog.notification.service.NotificationPublisher;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import hr.algebra.sitelog.user.service.CurrentUser;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * AR1 part 2 - the audited reopen of a signed-off daily log:
+ * {@code SIGNED_OFF -&gt; (request with reason) -&gt; supervisor approves -&gt; REOPENED -&gt; edits -&gt;
+ * sign-off again (DailyLogService#signOff) -&gt; SIGNED_OFF}, revision + 1 per approved reopen.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Request&lt;/b&gt; - the SITE_MANAGER of the log's own site, only for a SIGNED_OFF log,
+ * reason mandatory, at most one PENDING request per log (also {@code uk_log_reopen_request_pending}).
+ * Every active safety supervisor gets a REOPEN_REQUESTED notification.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Approve&lt;/b&gt; - SAFETY_SUPERVISOR: the request becomes APPROVED, the log REOPENED with
+ * {@code revision + 1}. That is exactly the one change the V3 lock trigger accepts on a
+ * SIGNED_OFF row (status -&gt; REOPENED, revision + 1, content unchanged), and {@code @Version}
+ * makes it conflict with any concurrent change of the log.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Reject&lt;/b&gt; - SAFETY_SUPERVISOR, reason mandatory (V7 {@code decision_note}); the log
+ * stays SIGNED_OFF and untouched.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * Two supervisors deciding the same request at the same moment: the request row is read with
+ * {@code SELECT ... FOR UPDATE}, so the second decision waits, then finds it decided (409).
+ *
+ * &lt;p&gt;Audit trail (ADR-0003): this table says why and who decided, the {@code @AuditedAction}
+ * aspect records the action, Envers records what the reopen and the later edits changed.
+ */
+@Service
+@Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
+public class LogReopenService {
+
+	public static final String NOT_SIGNED_OFF = &quot;reopen.flash.notSignedOff&quot;;
+
+	public static final String ALREADY_PENDING = &quot;reopen.flash.alreadyPending&quot;;
+
+	public static final String ALREADY_DECIDED = &quot;reopen.flash.alreadyDecided&quot;;
+
+	public static final String REASON_REQUIRED = &quot;validation.dailyLog.reopenReason.required&quot;;
+
+	public static final String REJECT_REASON_REQUIRED = &quot;validation.reopen.rejectReason.required&quot;;
+
+	private final LogReopenRequestRepository reopenRequests;
+
+	private final DailyLogRepository dailyLogs;
+
+	private final AppUserRepository users;
+
+	private final CurrentUserProvider currentUser;
+
+	private final NotificationPublisher notifications;
+
+	private final Clock clock;
+
+	public LogReopenService(LogReopenRequestRepository reopenRequests, DailyLogRepository dailyLogs,
+			AppUserRepository users, CurrentUserProvider currentUser, NotificationPublisher notifications,
+<span class="fc" id="L80">			Clock clock) {</span>
+<span class="fc" id="L81">		this.reopenRequests = reopenRequests;</span>
+<span class="fc" id="L82">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L83">		this.users = users;</span>
+<span class="fc" id="L84">		this.currentUser = currentUser;</span>
+<span class="fc" id="L85">		this.notifications = notifications;</span>
+<span class="fc" id="L86">		this.clock = clock;</span>
+<span class="fc" id="L87">	}</span>
+
+	/** Reopen part of the log detail: pending request and history (two small queries). */
+	public ReopenPanel panel(Long dailyLogId) {
+<span class="fc" id="L91">		DailyLog log = dailyLogs.findById(dailyLogId).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, dailyLogId));</span>
+<span class="fc" id="L92">		List&lt;ReopenRequestView&gt; history = history(dailyLogId);</span>
+<span class="fc" id="L93">		ReopenRequestView pending = history.stream().filter(ReopenRequestView::pending).findFirst().orElse(null);</span>
+<span class="fc" id="L94">		return new ReopenPanel(dailyLogId, log.getStatus(), pending, history,</span>
+<span class="fc bfc" id="L95" title="All 4 branches covered.">				log.getStatus() == LogStatus.SIGNED_OFF &amp;&amp; pending == null);</span>
+	}
+
+	/** Every request of a log, newest first, with requester and decider. */
+	public List&lt;ReopenRequestView&gt; history(Long dailyLogId) {
+<span class="fc" id="L100">		return reopenRequests.findByDailyLog_IdOrderByRequestedAtDesc(dailyLogId).stream()</span>
+<span class="fc" id="L101">			.map(request -&gt; ReopenRequestView.of(request, clock.getZone()))</span>
+<span class="fc" id="L102">			.toList();</span>
+	}
+
+	/** The supervisor's queue: pending requests on all sites, oldest first (decided 24/11: supervisors only). */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	public List&lt;PendingReopenItem&gt; pendingRequests() {
+<span class="fc" id="L108">		return reopenRequests.findByStatusOrderByRequestedAtAsc(ReopenStatus.PENDING).stream()</span>
+<span class="fc" id="L109">			.map(r -&gt; new PendingReopenItem(r.getId(), r.getDailyLog().getId(), r.getDailyLog().getSite().getCode(),</span>
+<span class="fc" id="L110">					r.getDailyLog().getSite().getName(), r.getDailyLog().getLogDate(), r.getReason(),</span>
+<span class="fc" id="L111">					r.getRequestedBy().getFullName(), r.getRequestedAt().atZone(clock.getZone())))</span>
+<span class="fc" id="L112">			.toList();</span>
+	}
+
+	/**
+	 * The site manager asks to reopen a signed-off log; returns the request id.
+	 * {@code expectedVersion} is the version shown on the page (the log must not have changed since).
+	 */
+	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#dailyLogId)&quot;)
+	@AuditedAction(DomainActionType.LOG_REOPEN_REQUESTED)
+	@Transactional
+	public Long request(Long dailyLogId, Long expectedVersion, String reason) {
+<span class="fc" id="L123">		DailyLog log = dailyLogs.findWithSiteById(dailyLogId)</span>
+<span class="fc" id="L124">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, dailyLogId));</span>
+<span class="fc" id="L125">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">		if (log.getStatus() != LogStatus.SIGNED_OFF) {</span>
+<span class="fc" id="L127">			throw new InvalidTransitionException(NOT_SIGNED_OFF, &quot;daily_log &quot; + dailyLogId + &quot; is &quot; + log.getStatus());</span>
+		}
+<span class="fc bfc" id="L129" title="All 2 branches covered.">		if (reopenRequests.existsByDailyLog_IdAndStatus(dailyLogId, ReopenStatus.PENDING)) {</span>
+<span class="fc" id="L130">			throw new InvalidTransitionException(ALREADY_PENDING, &quot;daily_log &quot; + dailyLogId + &quot; has a pending request&quot;);</span>
+		}
+<span class="fc" id="L132">		String text = requireText(reason, &quot;reason&quot;, REASON_REQUIRED);</span>
+<span class="fc" id="L133">		CurrentUser requester = currentUser.currentUser();</span>
+<span class="fc" id="L134">		LogReopenRequest request = reopenRequests.save(new LogReopenRequest(log, text,</span>
+<span class="fc" id="L135">				users.getReferenceById(requester.id()), Instant.now(clock)));</span>
+<span class="fc" id="L136">		notifications.notifyRole(RoleName.SAFETY_SUPERVISOR, NotificationType.REOPEN_REQUESTED,</span>
+<span class="fc" id="L137">				&quot;/daily-logs/&quot; + dailyLogId, log.getSite().getCode(), log.getLogDate(), requester.fullName());</span>
+<span class="fc" id="L138">		return request.getId();</span>
+	}
+
+	/**
+	 * The supervisor approves: SIGNED_OFF -&gt; REOPENED, revision + 1; {@code note} is optional.
+	 * A concurrent change of the log ends in a version conflict (409) and nothing is decided.
+	 */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	@AuditedAction(DomainActionType.LOG_REOPEN_APPROVED)
+	@Transactional
+	public void approve(Long dailyLogId, Long requestId, String note) {
+<span class="fc" id="L149">		LogReopenRequest request = pendingRequest(dailyLogId, requestId);</span>
+<span class="pc" id="L150">		DailyLog log = dailyLogs.findById(dailyLogId).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, dailyLogId));</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">		if (log.getStatus() != LogStatus.SIGNED_OFF) {</span>
+<span class="fc" id="L152">			throw new InvalidTransitionException(NOT_SIGNED_OFF, &quot;daily_log &quot; + dailyLogId + &quot; is &quot; + log.getStatus());</span>
+		}
+		// the only change the V3 lock trigger lets through on a SIGNED_OFF row
+<span class="fc" id="L155">		log.setStatus(LogStatus.REOPENED);</span>
+<span class="fc" id="L156">		log.setRevision(log.getRevision() + 1);</span>
+<span class="fc" id="L157">		request.decide(ReopenStatus.APPROVED, users.getReferenceById(currentUser.currentUserId()), Instant.now(clock),</span>
+<span class="fc" id="L158">				blankToNull(note));</span>
+<span class="fc" id="L159">	}</span>
+
+	/** The supervisor rejects with a mandatory reason; the log stays SIGNED_OFF. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	@AuditedAction(DomainActionType.LOG_REOPEN_REJECTED)
+	@Transactional
+	public void reject(Long dailyLogId, Long requestId, String reason) {
+<span class="fc" id="L166">		String text = requireText(reason, &quot;reason&quot;, REJECT_REASON_REQUIRED);</span>
+<span class="fc" id="L167">		LogReopenRequest request = pendingRequest(dailyLogId, requestId);</span>
+<span class="fc" id="L168">		request.decide(ReopenStatus.REJECTED, users.getReferenceById(currentUser.currentUserId()), Instant.now(clock),</span>
+				text);
+<span class="fc" id="L170">	}</span>
+
+	/** The request, locked for the decision; it must belong to the log in the URL and still be PENDING. */
+	private LogReopenRequest pendingRequest(Long dailyLogId, Long requestId) {
+<span class="fc" id="L174">		LogReopenRequest request = reopenRequests.findForDecisionById(requestId)</span>
+<span class="fc" id="L175">			.filter(r -&gt; r.getDailyLog().getId().equals(dailyLogId))</span>
+<span class="fc" id="L176">			.orElseThrow(() -&gt; new NotFoundException(LogReopenRequest.class, requestId));</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">		if (!request.isPending()) {</span>
+<span class="fc" id="L178">			throw new InvalidTransitionException(ALREADY_DECIDED,</span>
+<span class="fc" id="L179">					&quot;log_reopen_request &quot; + requestId + &quot; is already &quot; + request.getStatus());</span>
+		}
+<span class="fc" id="L181">		return request;</span>
+	}
+
+	private static String requireText(String value, String field, String messageKey) {
+<span class="fc" id="L185">		String text = blankToNull(value);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">		if (text == null) {</span>
+<span class="fc" id="L187">			throw new InvalidFieldException(field, messageKey);</span>
+		}
+<span class="fc" id="L189">		return text;</span>
+	}
+
+	private static String blankToNull(String value) {
+<span class="fc bfc" id="L193" title="All 4 branches covered.">		return value == null || value.isBlank() ? null : value.strip();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

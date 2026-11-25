@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.web</a> &gt; <span class="el_source">IncidentController.java</span></div><h1>IncidentController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.web;
+
+import java.time.Clock;
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.SmartValidator;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.MissingSeverityFieldsException;
+import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.common.web.Pages;
+import hr.algebra.sitelog.crew.service.CrewService;
+import hr.algebra.sitelog.incident.domain.IncidentCategory;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.service.DailyLogOption;
+import hr.algebra.sitelog.incident.service.IncidentDetails;
+import hr.algebra.sitelog.incident.service.IncidentFilter;
+import hr.algebra.sitelog.incident.service.IncidentService;
+import hr.algebra.sitelog.site.service.SiteListItem;
+import hr.algebra.sitelog.site.service.SiteService;
+
+/**
+ * Incident screens (AR2): list (all sites and per site, with status / severity filters), report
+ * form, detail with the workflow buttons the caller's role allows and the timeline, edit form,
+ * and the workflow POSTs (start review, sign-off, close, delete). Every POST ends in a redirect
+ * with a flash (PRG); the rules themselves are in {@link IncidentService}.
+ *
+ * &lt;p&gt;Validation: the default constraints of {@link IncidentForm} always; the {@link HighSeverity}
+ * group (root cause, witnesses, medical treatment, authority notified) only for HIGH / CRITICAL.
+ */
+@Controller
+public class IncidentController {
+
+	static final String LIST_VIEW = &quot;incident/list&quot;;
+
+	static final String FORM_VIEW = &quot;incident/form&quot;;
+
+	static final String DETAIL_VIEW = &quot;incident/detail&quot;;
+
+	static final String FORM = &quot;incidentForm&quot;;
+
+<span class="fc" id="L57">	static final Set&lt;String&gt; SORTABLE = Set.of(&quot;occurredAt&quot;, &quot;severity&quot;, &quot;status&quot;, &quot;title&quot;);</span>
+
+<span class="fc" id="L59">	static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.DESC, &quot;occurredAt&quot;);</span>
+
+	private final IncidentService incidentService;
+
+	private final SiteService siteService;
+
+	private final CrewService crewService;
+
+	private final SmartValidator validator;
+
+	private final Clock clock;
+
+	public IncidentController(IncidentService incidentService, SiteService siteService, CrewService crewService,
+<span class="fc" id="L72">			SmartValidator validator, Clock clock) {</span>
+<span class="fc" id="L73">		this.incidentService = incidentService;</span>
+<span class="fc" id="L74">		this.siteService = siteService;</span>
+<span class="fc" id="L75">		this.crewService = crewService;</span>
+<span class="fc" id="L76">		this.validator = validator;</span>
+<span class="fc" id="L77">		this.clock = clock;</span>
+<span class="fc" id="L78">	}</span>
+
+	// ------------------------------------------------------------------ lists
+
+	@GetMapping(&quot;/incidents&quot;)
+	public String list(@RequestParam(required = false) IncidentStatus status,
+			@RequestParam(required = false) Severity severity, @PageableDefault(size = 20) Pageable pageable,
+			Model model) {
+<span class="fc" id="L86">		return list(null, status, severity, pageable, model);</span>
+	}
+
+	@GetMapping(&quot;/sites/{siteId}/incidents&quot;)
+	public String listForSite(@PathVariable Long siteId, @RequestParam(required = false) IncidentStatus status,
+			@RequestParam(required = false) Severity severity, @PageableDefault(size = 20) Pageable pageable,
+			Model model) {
+<span class="fc" id="L93">		SiteListItem site = siteService.getSummary(siteId);</span>
+<span class="fc" id="L94">		model.addAttribute(&quot;site&quot;, site);</span>
+<span class="fc" id="L95">		model.addAttribute(&quot;contextTitle&quot;, site.name());</span>
+<span class="fc" id="L96">		return list(siteId, status, severity, pageable, model);</span>
+	}
+
+	private String list(Long siteId, IncidentStatus status, Severity severity, Pageable pageable, Model model) {
+<span class="fc" id="L100">		model.addAttribute(&quot;page&quot;, incidentService.list(new IncidentFilter(siteId, status, severity),</span>
+<span class="fc" id="L101">				Pages.restrict(pageable, SORTABLE, DEFAULT_SORT)));</span>
+<span class="fc" id="L102">		model.addAttribute(&quot;status&quot;, status);</span>
+<span class="fc" id="L103">		model.addAttribute(&quot;severity&quot;, severity);</span>
+<span class="fc" id="L104">		model.addAttribute(&quot;statuses&quot;, IncidentStatus.values());</span>
+<span class="fc" id="L105">		model.addAttribute(&quot;severities&quot;, Severity.values());</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">		model.addAttribute(&quot;listUrl&quot;, siteId == null ? &quot;/incidents&quot; : &quot;/sites/&quot; + siteId + &quot;/incidents&quot;);</span>
+<span class="fc" id="L107">		return LIST_VIEW;</span>
+	}
+
+	// ------------------------------------------------------------------ report (create)
+
+	@GetMapping(&quot;/sites/{siteId}/incidents/new&quot;)
+	public String newForm(@PathVariable Long siteId, Model model) {
+<span class="fc" id="L114">		List&lt;DailyLogOption&gt; logs = incidentService.dailyLogOptionsForReport(siteId);</span>
+<span class="fc" id="L115">		model.addAttribute(FORM, IncidentForm.blank(clock));</span>
+<span class="fc" id="L116">		return form(model, siteService.getSummary(siteId), logs, null);</span>
+	}
+
+	@PostMapping(&quot;/sites/{siteId}/incidents&quot;)
+	public String create(@PathVariable Long siteId, @ModelAttribute(FORM) IncidentForm form, BindingResult result,
+			Model model, RedirectAttributes redirect) {
+		// protected read first: a refused caller gets 403 before any validation detail
+<span class="fc" id="L123">		List&lt;DailyLogOption&gt; logs = incidentService.dailyLogOptionsForReport(siteId);</span>
+<span class="fc" id="L124">		validate(form, result);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L127">				Long id = incidentService.report(siteId, form.toCommand(clock.getZone()));</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">				Flash.success(redirect, form.requiresExtendedFields() ? &quot;incident.flash.reported.high&quot;</span>
+<span class="fc" id="L129">						: &quot;incident.flash.reported&quot;, form.getTitle());</span>
+<span class="fc" id="L130">				return &quot;redirect:/incidents/&quot; + id;</span>
+			}
+<span class="fc" id="L132">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L133">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+<span class="fc" id="L135">			catch (MissingSeverityFieldsException e) {</span>
+<span class="fc" id="L136">				rejectMissing(result, e);</span>
+<span class="fc" id="L137">			}</span>
+		}
+<span class="fc" id="L139">		return form(model, siteService.getSummary(siteId), logs, null);</span>
+	}
+
+	// ------------------------------------------------------------------ detail and edit
+
+	@GetMapping(&quot;/incidents/{id}&quot;)
+	public String detail(@PathVariable Long id, Model model) {
+<span class="fc" id="L146">		IncidentDetails incident = incidentService.getDetail(id);</span>
+<span class="fc" id="L147">		model.addAttribute(&quot;incident&quot;, incident);</span>
+<span class="fc" id="L148">		model.addAttribute(&quot;contextTitle&quot;, incident.siteName());</span>
+<span class="fc" id="L149">		return DETAIL_VIEW;</span>
+	}
+
+	@GetMapping(&quot;/incidents/{id}/edit&quot;)
+	public String editForm(@PathVariable Long id, Model model) {
+<span class="fc" id="L154">		IncidentDetails incident = incidentService.getForEdit(id);</span>
+<span class="fc" id="L155">		model.addAttribute(FORM, IncidentForm.from(incident));</span>
+<span class="fc" id="L156">		return editForm(model, incident);</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}&quot;)
+	public String update(@PathVariable Long id, @ModelAttribute(FORM) IncidentForm form, BindingResult result,
+			Model model, RedirectAttributes redirect) {
+<span class="fc" id="L162">		IncidentDetails incident = incidentService.getForEdit(id);</span>
+<span class="fc" id="L163">		validate(form, result);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L166">				incidentService.update(id, form.getVersion(), form.toCommand(clock.getZone()));</span>
+<span class="fc" id="L167">				Flash.success(redirect, &quot;incident.flash.updated&quot;, form.getTitle());</span>
+<span class="fc" id="L168">				return &quot;redirect:/incidents/&quot; + id;</span>
+			}
+<span class="fc" id="L170">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L171">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+<span class="nc" id="L173">			catch (MissingSeverityFieldsException e) {</span>
+<span class="nc" id="L174">				rejectMissing(result, e);</span>
+<span class="fc" id="L175">			}</span>
+		}
+<span class="fc" id="L177">		return editForm(model, incident);</span>
+	}
+
+	// ------------------------------------------------------------------ workflow (version = the one on the page)
+
+	@PostMapping(&quot;/incidents/{id}/start-review&quot;)
+	public String startReview(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
+<span class="fc" id="L184">		incidentService.startReview(id, version);</span>
+<span class="fc" id="L185">		Flash.success(redirect, &quot;incident.flash.reviewStarted&quot;);</span>
+<span class="fc" id="L186">		return &quot;redirect:/incidents/&quot; + id;</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}/sign-off&quot;)
+	public String signOff(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
+<span class="fc" id="L191">		incidentService.signOff(id, version);</span>
+<span class="fc" id="L192">		Flash.success(redirect, &quot;incident.flash.signedOff&quot;);</span>
+<span class="fc" id="L193">		return &quot;redirect:/incidents/&quot; + id;</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}/close&quot;)
+	public String close(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
+<span class="fc" id="L198">		incidentService.close(id, version);</span>
+<span class="fc" id="L199">		Flash.success(redirect, &quot;incident.flash.closed&quot;);</span>
+<span class="fc" id="L200">		return &quot;redirect:/incidents/&quot; + id;</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}/delete&quot;)
+	public String delete(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
+		try {
+<span class="fc" id="L206">			Long siteId = incidentService.delete(id, version);</span>
+<span class="fc" id="L207">			Flash.success(redirect, &quot;incident.flash.deleted&quot;);</span>
+<span class="fc" id="L208">			return &quot;redirect:/sites/&quot; + siteId + &quot;/incidents&quot;;</span>
+		}
+<span class="fc" id="L210">		catch (DeletionNotAllowedException e) {</span>
+<span class="fc" id="L211">			Flash.error(redirect, e.getMessageKey());</span>
+<span class="fc" id="L212">			return &quot;redirect:/incidents/&quot; + id;</span>
+		}
+	}
+
+	// ------------------------------------------------------------------ helpers
+
+	/** Default constraints always, the {@link HighSeverity} group only for HIGH / CRITICAL. */
+	private void validate(IncidentForm form, BindingResult result) {
+<span class="fc" id="L220">		validator.validate(form, result);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">		if (form.requiresExtendedFields()) {</span>
+<span class="fc" id="L222">			validator.validate(form, result, HighSeverity.class);</span>
+		}
+<span class="fc" id="L224">	}</span>
+
+	/** The service's AR2 check, shown on the same fields as the form validation would. */
+	private static void rejectMissing(BindingResult result, MissingSeverityFieldsException e) {
+<span class="fc" id="L228">		e.getFields().forEach(field -&gt; result.rejectValue(field, &quot;validation.incident.&quot; + field + &quot;.required&quot;));</span>
+<span class="fc" id="L229">	}</span>
+
+	private String editForm(Model model, IncidentDetails incident) {
+<span class="fc" id="L232">		model.addAttribute(&quot;incident&quot;, incident);</span>
+<span class="fc" id="L233">		return form(model, siteService.getSummary(incident.siteId()), incidentService.dailyLogOptions(incident.siteId()),</span>
+<span class="fc" id="L234">				incident.id());</span>
+	}
+
+	private String form(Model model, SiteListItem site, List&lt;DailyLogOption&gt; logs, Long incidentId) {
+<span class="fc" id="L238">		IncidentForm form = (IncidentForm) model.getAttribute(FORM);</span>
+<span class="fc" id="L239">		model.addAttribute(&quot;site&quot;, site);</span>
+<span class="fc" id="L240">		model.addAttribute(&quot;incidentId&quot;, incidentId);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">		model.addAttribute(&quot;formAction&quot;, incidentId == null ? &quot;/sites/&quot; + site.id() + &quot;/incidents&quot; : &quot;/incidents/&quot; + incidentId);</span>
+<span class="fc" id="L242">		model.addAttribute(&quot;dailyLogs&quot;, logs);</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">		model.addAttribute(&quot;crews&quot;, crewService.optionsIncluding(form == null ? List.of() : form.getAffectedCrewIds()));</span>
+<span class="fc" id="L244">		model.addAttribute(&quot;severities&quot;, Severity.values());</span>
+<span class="fc" id="L245">		model.addAttribute(&quot;categories&quot;, IncidentCategory.values());</span>
+<span class="fc" id="L246">		model.addAttribute(&quot;contextTitle&quot;, site.name());</span>
+<span class="fc" id="L247">		return FORM_VIEW;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApiPaging.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.common</a> &gt; <span class="el_source">ApiPaging.java</span></div><h1>ApiPaging.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.common;
+
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
+import hr.algebra.sitelog.common.web.Pages;
+
+/**
+ * Limits of the {@code ?page=&amp;size=&amp;sort=} parameters of the API collections. Same rules as
+ * the screens ({@link Pages#restrict}: whitelisted sort properties, size capped at
+ * {@value Pages#MAX_SIZE}), with one difference: a screen silently ignores an unknown sort
+ * property, the API answers 400 so a client learns about its typo instead of getting a
+ * different order than it asked for.
+ */
+public final class ApiPaging {
+
+	private ApiPaging() {
+	}
+
+	public static Pageable restrict(Pageable requested, Set&lt;String&gt; sortable, Sort fallback) {
+<span class="fc" id="L24">		requested.getSort().forEach(order -&gt; {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">			if (!sortable.contains(order.getProperty())) {</span>
+<span class="fc" id="L26">				throw new InvalidPageRequestException(&quot;Cannot sort by '&quot; + order.getProperty()</span>
+<span class="fc" id="L27">						+ &quot;'. Sortable properties: &quot; + String.join(&quot;, &quot;, new TreeSet&lt;&gt;(sortable)) + &quot;.&quot;);</span>
+			}
+<span class="fc" id="L29">		});</span>
+<span class="fc" id="L30">		return Pages.restrict(requested, sortable, fallback);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

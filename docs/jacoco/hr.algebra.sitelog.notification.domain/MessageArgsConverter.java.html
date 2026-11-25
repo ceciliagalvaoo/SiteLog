@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MessageArgsConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.notification.domain</a> &gt; <span class="el_source">MessageArgsConverter.java</span></div><h1>MessageArgsConverter.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.notification.domain;
+
+import java.util.Arrays;
+import java.util.List;
+
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
+
+/**
+ * Stores the arguments of a notification body in one {@code varchar} column
+ * ({@code notification.body_args}, V7), separated by the ASCII unit separator U+001F - a
+ * control character that does not occur in names, codes or dates. {@link #clean} removes it from
+ * a value before it is stored, so a value can never be split in two. No arguments = null.
+ *
+ * &lt;p&gt;Chosen over a JSON column (needs a JSON mapper and a {@code jsonb} type for one list of
+ * strings) and over a child table (one more join for the bell on every page).
+ */
+@Converter
+<span class="fc" id="L19">public class MessageArgsConverter implements AttributeConverter&lt;List&lt;String&gt;, String&gt; {</span>
+
+	static final String SEPARATOR = &quot;\u001F&quot;;
+
+	@Override
+	public String convertToDatabaseColumn(List&lt;String&gt; args) {
+<span class="fc bfc" id="L25" title="All 4 branches covered.">		if (args == null || args.isEmpty()) {</span>
+<span class="fc" id="L26">			return null;</span>
+		}
+<span class="fc" id="L28">		return String.join(SEPARATOR, args.stream().map(MessageArgsConverter::clean).toList());</span>
+	}
+
+	@Override
+	public List&lt;String&gt; convertToEntityAttribute(String column) {
+<span class="fc bfc" id="L33" title="All 2 branches covered.">		if (column == null) {</span>
+<span class="fc" id="L34">			return List.of();</span>
+		}
+<span class="fc" id="L36">		return Arrays.asList(column.split(SEPARATOR, -1));</span>
+	}
+
+	/** The value as it can be stored: null becomes empty, the separator is removed. */
+	public static String clean(Object value) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">		return value == null ? &quot;&quot; : String.valueOf(value).replace(SEPARATOR, &quot;&quot;);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

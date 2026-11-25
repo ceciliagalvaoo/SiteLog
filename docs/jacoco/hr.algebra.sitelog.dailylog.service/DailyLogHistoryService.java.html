@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DailyLogHistoryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.service</a> &gt; <span class="el_source">DailyLogHistoryService.java</span></div><h1>DailyLogHistoryService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.hibernate.envers.AuditReader;
+import org.hibernate.envers.AuditReaderFactory;
+import org.hibernate.envers.RevisionType;
+import org.hibernate.envers.query.AuditEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.audit.domain.AuditedEntityType;
+import hr.algebra.sitelog.audit.service.DomainActionService;
+import hr.algebra.sitelog.common.audit.AuditRevision;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.dailylog.domain.CrewAssignment;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.domain.WorkEntry;
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.user.domain.AppUser;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import jakarta.persistence.EntityManager;
+
+/**
+ * Revision history of a daily log with before/after per field, read with Envers'
+ * {@link AuditReader} (ADR-0003 decision 4).
+ *
+ * &lt;p&gt;How: three audit queries, one per audited entity of the aggregate -
+ * &lt;ol&gt;
+ * &lt;li&gt;{@code DailyLog} revisions of this id;&lt;/li&gt;
+ * &lt;li&gt;{@code WorkEntry} revisions of every entry that ever belonged to the log. A DEL row
+ * stores only id/rev/revtype (Envers default, no {@code store_data_at_delete}), so entries are
+ * first found by {@code relatedId(&quot;dailyLog&quot;)} and then all their revisions are read by id;&lt;/li&gt;
+ * &lt;li&gt;{@code CrewAssignment} revisions the same way, through those work entries.&lt;/li&gt;
+ * &lt;/ol&gt;
+ * Each row's revisions are walked in order and compared with the previous snapshot of the same
+ * row: ADD shows every value as &quot;after&quot;, MOD only the fields that differ, DEL the last values as
+ * &quot;before&quot;. Changes are then grouped by revision (one revision = one committed transaction,
+ * with its user and time from {@link AuditRevision}).
+ *
+ * &lt;p&gt;All revisions are listed, DRAFT edits included (decision 5 of the ADR); the reopen
+ * requests and the domain actions are returned next to them so the page can show which edits
+ * belong to which reopen.
+ */
+@Service
+@Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
+public class DailyLogHistoryService {
+
+	static final String DAILY_LOG = &quot;DAILY_LOG&quot;;
+
+	static final String WORK_ENTRY = &quot;WORK_ENTRY&quot;;
+
+	static final String CREW_ASSIGNMENT = &quot;CREW_ASSIGNMENT&quot;;
+
+	private final EntityManager entityManager;
+
+	private final DailyLogRepository dailyLogs;
+
+	private final AppUserRepository users;
+
+	private final LogReopenService reopenService;
+
+	private final DomainActionService domainActions;
+
+	private final Clock clock;
+
+	public DailyLogHistoryService(EntityManager entityManager, DailyLogRepository dailyLogs, AppUserRepository users,
+<span class="fc" id="L84">			LogReopenService reopenService, DomainActionService domainActions, Clock clock) {</span>
+<span class="fc" id="L85">		this.entityManager = entityManager;</span>
+<span class="fc" id="L86">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L87">		this.users = users;</span>
+<span class="fc" id="L88">		this.reopenService = reopenService;</span>
+<span class="fc" id="L89">		this.domainActions = domainActions;</span>
+<span class="fc" id="L90">		this.clock = clock;</span>
+<span class="fc" id="L91">	}</span>
+
+	public DailyLogHistory history(Long dailyLogId) {
+<span class="fc" id="L94">		DailyLog log = dailyLogs.findWithSiteById(dailyLogId)</span>
+<span class="pc" id="L95">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, dailyLogId));</span>
+<span class="fc" id="L96">		return new DailyLogHistory(DailyLogHeader.of(log), log.getRevision(), revisions(dailyLogId),</span>
+<span class="fc" id="L97">				reopenService.history(dailyLogId), domainActions.timeline(AuditedEntityType.DAILY_LOG, dailyLogId));</span>
+	}
+
+	/** Envers revisions of the log and its children, newest first. */
+	public List&lt;RevisionView&gt; revisions(Long dailyLogId) {
+<span class="fc" id="L102">		AuditReader reader = AuditReaderFactory.get(entityManager);</span>
+<span class="fc" id="L103">		ZoneId zone = clock.getZone();</span>
+<span class="fc" id="L104">		Map&lt;Long, AuditRevision&gt; revisionInfo = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L105">		Map&lt;Long, List&lt;EntityChange&gt;&gt; changesByRevision = new TreeMap&lt;&gt;(Comparator.reverseOrder());</span>
+
+<span class="fc" id="L107">		List&lt;Object[]&gt; logRows = query(reader, DailyLog.class, AuditEntity.id().eq(dailyLogId));</span>
+<span class="fc" id="L108">		collect(logRows, DAILY_LOG, this::logSnapshot, row -&gt; null, revisionInfo,</span>
+				changesByRevision);
+
+<span class="fc" id="L111">		Set&lt;Long&gt; entryIds = idsOf(query(reader, WorkEntry.class, AuditEntity.relatedId(&quot;dailyLog&quot;).eq(dailyLogId)));</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">		if (!entryIds.isEmpty()) {</span>
+<span class="fc" id="L113">			List&lt;Object[]&gt; entryRows = query(reader, WorkEntry.class, AuditEntity.id().in(entryIds));</span>
+<span class="fc" id="L114">			collect(entryRows, WORK_ENTRY, DailyLogHistoryService::entrySnapshot, WorkEntry::getDescription,</span>
+					revisionInfo, changesByRevision);
+
+<span class="fc" id="L117">			Set&lt;Long&gt; assignmentIds = idsOf(</span>
+<span class="fc" id="L118">					query(reader, CrewAssignment.class, AuditEntity.relatedId(&quot;workEntry&quot;).in(entryIds.toArray())));</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">			if (!assignmentIds.isEmpty()) {</span>
+<span class="fc" id="L120">				List&lt;Object[]&gt; assignmentRows = query(reader, CrewAssignment.class,</span>
+<span class="fc" id="L121">						AuditEntity.id().in(assignmentIds));</span>
+<span class="fc" id="L122">				collect(assignmentRows, CREW_ASSIGNMENT, DailyLogHistoryService::assignmentSnapshot,</span>
+						DailyLogHistoryService::crewName, revisionInfo, changesByRevision);
+			}
+		}
+
+<span class="fc" id="L127">		Map&lt;String, String&gt; names = namesByEmail(revisionInfo.values());</span>
+<span class="fc" id="L128">		List&lt;RevisionView&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L129">		changesByRevision.forEach((rev, changes) -&gt; {</span>
+<span class="fc" id="L130">			AuditRevision info = revisionInfo.get(rev);</span>
+<span class="fc" id="L131">			result.add(new RevisionView(rev, Instant.ofEpochMilli(info.getTimestamp()).atZone(zone),</span>
+<span class="fc" id="L132">					info.getUsername(), names.get(info.getUsername()), List.copyOf(changes)));</span>
+<span class="fc" id="L133">		});</span>
+<span class="fc" id="L134">		return result;</span>
+	}
+
+	@SuppressWarnings(&quot;unchecked&quot;)
+	private static List&lt;Object[]&gt; query(AuditReader reader, Class&lt;?&gt; type,
+			org.hibernate.envers.query.criteria.AuditCriterion criterion) {
+<span class="fc" id="L140">		return reader.createQuery()</span>
+<span class="fc" id="L141">			.forRevisionsOfEntity(type, false, true)</span>
+<span class="fc" id="L142">			.add(criterion)</span>
+<span class="fc" id="L143">			.addOrder(AuditEntity.revisionNumber().asc())</span>
+<span class="fc" id="L144">			.getResultList();</span>
+	}
+
+	private static Set&lt;Long&gt; idsOf(List&lt;Object[]&gt; rows) {
+<span class="fc" id="L148">		Set&lt;Long&gt; ids = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L149">		rows.forEach(row -&gt; ids.add(((hr.algebra.sitelog.common.domain.BaseEntity) row[0]).getId()));</span>
+<span class="fc" id="L150">		return ids;</span>
+	}
+
+	/**
+	 * Walks the rows (already in revision order) per entity id and turns each into an
+	 * {@link EntityChange} against the previous snapshot of the same id.
+	 */
+	@SuppressWarnings(&quot;unchecked&quot;)
+	private &lt;T extends hr.algebra.sitelog.common.domain.BaseEntity&gt; void collect(List&lt;Object[]&gt; rows, String entity,
+			Function&lt;T, Map&lt;String, Snapshot&gt;&gt; snapshot, Function&lt;T, String&gt; label, Map&lt;Long, AuditRevision&gt; info,
+			Map&lt;Long, List&lt;EntityChange&gt;&gt; changesByRevision) {
+<span class="fc" id="L161">		Map&lt;Long, Map&lt;String, Snapshot&gt;&gt; last = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L162">		Map&lt;Long, String&gt; lastLabel = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">		for (Object[] row : rows) {</span>
+<span class="fc" id="L164">			T state = (T) row[0];</span>
+<span class="fc" id="L165">			AuditRevision revision = (AuditRevision) row[1];</span>
+<span class="fc" id="L166">			RevisionType type = (RevisionType) row[2];</span>
+<span class="fc" id="L167">			info.putIfAbsent(revision.getRev(), revision);</span>
+<span class="fc" id="L168">			Long id = state.getId();</span>
+<span class="fc" id="L169">			Map&lt;String, Snapshot&gt; before = last.get(id);</span>
+			EntityChange change;
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">			if (type == RevisionType.DEL) {</span>
+<span class="nc" id="L172">				change = new EntityChange(entity, id, &quot;DELETED&quot;, lastLabel.get(id), diff(before, null));</span>
+<span class="nc" id="L173">				last.remove(id);</span>
+			}
+			else {
+<span class="fc" id="L176">				Map&lt;String, Snapshot&gt; after = snapshot.apply(state);</span>
+<span class="fc" id="L177">				String name = label.apply(state);</span>
+<span class="fc" id="L178">				lastLabel.put(id, name);</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">				boolean added = type == RevisionType.ADD || before == null;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">				change = new EntityChange(entity, id, added ? &quot;ADDED&quot; : &quot;MODIFIED&quot;, name,</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">						diff(added ? null : before, after));</span>
+<span class="fc" id="L182">				last.put(id, after);</span>
+			}
+<span class="pc bpc" id="L184" title="3 of 4 branches missed.">			if (!change.fields().isEmpty() || !&quot;MODIFIED&quot;.equals(change.changeType())) {</span>
+<span class="fc" id="L185">				changesByRevision.computeIfAbsent(revision.getRev(), r -&gt; new ArrayList&lt;&gt;()).add(change);</span>
+			}
+<span class="fc" id="L187">		}</span>
+<span class="fc" id="L188">	}</span>
+
+	/** Fields whose value differs; a missing side is null (added / deleted row). */
+	static List&lt;FieldChange&gt; diff(Map&lt;String, Snapshot&gt; before, Map&lt;String, Snapshot&gt; after) {
+<span class="fc" id="L192">		Map&lt;String, Snapshot&gt; keys = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">		if (before != null) {</span>
+<span class="fc" id="L194">			keys.putAll(before);</span>
+		}
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">		if (after != null) {</span>
+<span class="fc" id="L197">			keys.putAll(after);</span>
+		}
+<span class="fc" id="L199">		List&lt;FieldChange&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L200">		keys.forEach((labelKey, any) -&gt; {</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">			Object old = before == null || before.get(labelKey) == null ? null : before.get(labelKey).value();</span>
+<span class="pc bpc" id="L202" title="2 of 4 branches missed.">			Object now = after == null || after.get(labelKey) == null ? null : after.get(labelKey).value();</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">			if (!sameValue(old, now)) {</span>
+<span class="fc" id="L204">				changes.add(new FieldChange(labelKey, old, now, any.valueKeyPrefix()));</span>
+			}
+<span class="fc" id="L206">		});</span>
+<span class="fc" id="L207">		return changes;</span>
+	}
+
+	/** {@code BigDecimal} 8.0 and 8.00 are the same number of hours. */
+	private static boolean sameValue(Object a, Object b) {
+<span class="pc bpc" id="L212" title="1 of 4 branches missed.">		if (a instanceof java.math.BigDecimal x &amp;&amp; b instanceof java.math.BigDecimal y) {</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">			return x.compareTo(y) == 0;</span>
+		}
+<span class="fc" id="L215">		return Objects.equals(a, b);</span>
+	}
+
+	/** A field value of one revision, with the message prefix of its enum values (or null). */
+<span class="fc" id="L219">	record Snapshot(Object value, String valueKeyPrefix) {</span>
+
+		static Snapshot of(Object value) {
+<span class="fc" id="L222">			return new Snapshot(value, null);</span>
+		}
+
+		static Snapshot ofEnum(Enum&lt;?&gt; value, String prefix) {
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">			return new Snapshot(value == null ? null : value.name(), prefix);</span>
+		}
+
+	}
+
+	private Map&lt;String, Snapshot&gt; logSnapshot(DailyLog log) {
+<span class="fc" id="L232">		Map&lt;String, Snapshot&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L233">		values.put(&quot;history.field.logDate&quot;, Snapshot.of(log.getLogDate()));</span>
+<span class="fc" id="L234">		values.put(&quot;history.field.status&quot;, Snapshot.ofEnum(log.getStatus(), &quot;status.log.&quot;));</span>
+<span class="fc" id="L235">		values.put(&quot;history.field.revision&quot;, Snapshot.of(log.getRevision()));</span>
+<span class="fc" id="L236">		values.put(&quot;history.field.weather&quot;, Snapshot.ofEnum(log.getWeather(), &quot;weather.&quot;));</span>
+<span class="fc" id="L237">		values.put(&quot;history.field.notes&quot;, Snapshot.of(log.getNotes()));</span>
+<span class="fc" id="L238">		values.put(&quot;history.field.signedOffBy&quot;,</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">				Snapshot.of(log.getSignedOffBy() == null ? null : log.getSignedOffBy().getFullName()));</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">		values.put(&quot;history.field.signedOffAt&quot;, Snapshot.of(log.getSignedOffAt() == null ? null</span>
+<span class="fc" id="L241">				: log.getSignedOffAt().atZone(clock.getZone()).toLocalDateTime().withSecond(0).withNano(0)));</span>
+<span class="fc" id="L242">		return values;</span>
+	}
+
+	private static Map&lt;String, Snapshot&gt; entrySnapshot(WorkEntry entry) {
+<span class="fc" id="L246">		Map&lt;String, Snapshot&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L247">		values.put(&quot;history.field.description&quot;, Snapshot.of(entry.getDescription()));</span>
+<span class="fc" id="L248">		values.put(&quot;history.field.location&quot;, Snapshot.of(entry.getLocation()));</span>
+<span class="fc" id="L249">		values.put(&quot;history.field.startTime&quot;, Snapshot.of(entry.getStartTime()));</span>
+<span class="fc" id="L250">		values.put(&quot;history.field.endTime&quot;, Snapshot.of(entry.getEndTime()));</span>
+<span class="fc" id="L251">		return values;</span>
+	}
+
+	private static Map&lt;String, Snapshot&gt; assignmentSnapshot(CrewAssignment assignment) {
+<span class="fc" id="L255">		Map&lt;String, Snapshot&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L256">		values.put(&quot;history.field.crew&quot;, Snapshot.of(crewName(assignment)));</span>
+<span class="fc" id="L257">		values.put(&quot;history.field.hoursWorked&quot;, Snapshot.of(assignment.getHoursWorked()));</span>
+<span class="fc" id="L258">		values.put(&quot;history.field.workerCount&quot;, Snapshot.of(assignment.getWorkerCount()));</span>
+<span class="fc" id="L259">		values.put(&quot;history.field.task&quot;, Snapshot.of(assignment.getTask()));</span>
+<span class="fc" id="L260">		return values;</span>
+	}
+
+	/** The crew is NOT_AUDITED: Envers returns the current crew row, its name is today's name. */
+	private static String crewName(CrewAssignment assignment) {
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">		return assignment.getCrew() == null ? null : assignment.getCrew().getName();</span>
+	}
+
+	private Map&lt;String, String&gt; namesByEmail(java.util.Collection&lt;AuditRevision&gt; revisions) {
+<span class="fc" id="L269">		Set&lt;String&gt; emails = revisions.stream().map(AuditRevision::getUsername).filter(Objects::nonNull)</span>
+<span class="fc" id="L270">			.collect(Collectors.toSet());</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">		if (emails.isEmpty()) {</span>
+<span class="fc" id="L272">			return Map.of();</span>
+		}
+<span class="fc" id="L274">		return users.findByEmailIn(emails).stream()</span>
+<span class="pc" id="L275">			.collect(Collectors.toMap(AppUser::getEmail, AppUser::getFullName, (a, b) -&gt; a));</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

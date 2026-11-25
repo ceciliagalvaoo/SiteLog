@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationPublisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.notification.service</a> &gt; <span class="el_source">NotificationPublisher.java</span></div><h1>NotificationPublisher.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.notification.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.notification.domain.MessageArgsConverter;
+import hr.algebra.sitelog.notification.domain.Notification;
+import hr.algebra.sitelog.notification.domain.NotificationType;
+import hr.algebra.sitelog.notification.repository.NotificationRepository;
+import hr.algebra.sitelog.user.domain.AppUser;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+
+/**
+ * Creates notifications. Internal API for other services (reopen requested, high-severity
+ * incident) and, in M4, for the scheduled jobs: no {@code @PreAuthorize}, because the caller's
+ * own rule already decided that the event may happen, and a job has no signed-in user. Never
+ * called from a controller.
+ *
+ * &lt;p&gt;Joins the caller's transaction ({@code REQUIRED}): if the business change rolls back, its
+ * notifications are not sent either. Stores message key + arguments, never text, so every
+ * recipient reads it in his or her own language.
+ */
+@Service
+public class NotificationPublisher {
+
+	private final NotificationRepository notifications;
+
+	private final AppUserRepository users;
+
+	private final Clock clock;
+
+<span class="fc" id="L38">	public NotificationPublisher(NotificationRepository notifications, AppUserRepository users, Clock clock) {</span>
+<span class="fc" id="L39">		this.notifications = notifications;</span>
+<span class="fc" id="L40">		this.users = users;</span>
+<span class="fc" id="L41">		this.clock = clock;</span>
+<span class="fc" id="L42">	}</span>
+
+	/**
+	 * One notification for every active user with the role (e.g. every safety supervisor);
+	 * returns how many were created. The body is {@code type.bodyKey()} with {@code args}.
+	 */
+	@Transactional
+	public int notifyRole(RoleName role, NotificationType type, String link, Object... args) {
+<span class="fc" id="L50">		List&lt;AppUser&gt; recipients = users.findByRole_NameAndActiveTrueOrderByFullNameAsc(role);</span>
+<span class="fc" id="L51">		Instant now = Instant.now(clock);</span>
+<span class="fc" id="L52">		List&lt;String&gt; values = Arrays.stream(args).map(MessageArgsConverter::clean).toList();</span>
+<span class="fc" id="L53">		notifications.saveAll(recipients.stream()</span>
+<span class="fc" id="L54">			.map(user -&gt; Notification.translatable(user, type, type.bodyKey(), values, link, now))</span>
+<span class="fc" id="L55">			.toList());</span>
+<span class="fc" id="L56">		return recipients.size();</span>
+	}
+
+	/** One notification for one user (the assignee of an overdue action, the manager of an unsigned log). */
+	@Transactional
+	public void notifyUser(AppUser recipient, NotificationType type, String link, Object... args) {
+<span class="fc" id="L62">		List&lt;String&gt; values = Arrays.stream(args).map(MessageArgsConverter::clean).toList();</span>
+<span class="fc" id="L63">		notifications.save(Notification.translatable(recipient, type, type.bodyKey(), values, link,</span>
+<span class="fc" id="L64">				Instant.now(clock)));</span>
+<span class="fc" id="L65">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

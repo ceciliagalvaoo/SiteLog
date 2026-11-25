@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentAccess.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">IncidentAccess.java</span></div><h1>IncidentAccess.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import java.util.EnumSet;
+
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.repository.CorrectiveActionRepository;
+import hr.algebra.sitelog.incident.repository.IncidentRepository;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * Record-level rules of the incident workflow, used in {@code @PreAuthorize} as
+ * {@code @incidentAccess} (and in templates). The role is checked in the expression; this bean
+ * only answers questions about the record:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #isOnOwnSite} - the incident is on a site the signed-in SITE_MANAGER manages;&lt;/li&gt;
+ * &lt;li&gt;{@link #isLowSeverityOnOwnSite} - the same, and the incident is LOW or MEDIUM: a site
+ * manager handles those himself, HIGH / CRITICAL need the SAFETY_SUPERVISOR (AR2);&lt;/li&gt;
+ * &lt;li&gt;{@link #isAssignee} - the signed-in user is the assignee of the corrective action.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * As in {@code SiteAccess}, an id that does not exist answers {@code true}, so the service
+ * reports the normal 404 instead of a misleading 403.
+ */
+@Component(&quot;incidentAccess&quot;)
+@Transactional(readOnly = true)
+public class IncidentAccess {
+
+<span class="fc" id="L30">	static final EnumSet&lt;Severity&gt; LOW_SEVERITIES = EnumSet.of(Severity.LOW, Severity.MEDIUM);</span>
+
+	private final IncidentRepository incidents;
+
+	private final CorrectiveActionRepository actions;
+
+	private final CurrentUserProvider currentUser;
+
+	public IncidentAccess(IncidentRepository incidents, CorrectiveActionRepository actions,
+<span class="fc" id="L39">			CurrentUserProvider currentUser) {</span>
+<span class="fc" id="L40">		this.incidents = incidents;</span>
+<span class="fc" id="L41">		this.actions = actions;</span>
+<span class="fc" id="L42">		this.currentUser = currentUser;</span>
+<span class="fc" id="L43">	}</span>
+
+	public boolean isOnOwnSite(Long incidentId) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">		if (incidentId == null) {</span>
+<span class="fc" id="L47">			return false;</span>
+		}
+<span class="fc bfc" id="L49" title="All 2 branches covered.">		return incidents.existsByIdAndSite_Manager_Id(incidentId, currentUser.currentUserId())</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">				|| !incidents.existsById(incidentId);</span>
+	}
+
+	public boolean isLowSeverityOnOwnSite(Long incidentId) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">		if (incidentId == null) {</span>
+<span class="fc" id="L55">			return false;</span>
+		}
+<span class="fc bfc" id="L57" title="All 2 branches covered.">		return incidents.existsByIdAndSite_Manager_IdAndSeverityIn(incidentId, currentUser.currentUserId(),</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">				LOW_SEVERITIES) || !incidents.existsById(incidentId);</span>
+	}
+
+	public boolean isAssignee(Long actionId) {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">		if (actionId == null) {</span>
+<span class="fc" id="L63">			return false;</span>
+		}
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">		return actions.existsByIdAndAssignee_Id(actionId, currentUser.currentUserId()) || !actions.existsById(actionId);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

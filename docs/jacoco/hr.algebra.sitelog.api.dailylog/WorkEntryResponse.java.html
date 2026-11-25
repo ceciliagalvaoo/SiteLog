@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntryResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">WorkEntryResponse.java</span></div><h1>WorkEntryResponse.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.math.BigDecimal;
+import java.time.LocalTime;
+import java.util.List;
+
+import hr.algebra.sitelog.dailylog.service.WorkEntryView;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/**
+ * One work entry with its crew rows. {@code logVersion} is the current version of the parent
+ * daily log: a client sends it back as {@code logVersion} on its next change to this log.
+ */
+@Schema(description = &quot;Work entry with its crew rows&quot;)
+<span class="fc" id="L15">public record WorkEntryResponse(Long id,</span>
+		@Schema(description = &quot;Current version of the parent daily log (send it back on the next change)&quot;) Long logVersion,
+		String description, String location,
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;) LocalTime startTime,
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;) LocalTime endTime,
+		@Schema(description = &quot;Sum of the crew rows' hours&quot;) BigDecimal totalHours,
+		@Schema(description = &quot;Sum of the crew rows' workers&quot;) int totalWorkers,
+		List&lt;CrewAssignmentResponse&gt; crewAssignments) {
+
+	static WorkEntryResponse of(WorkEntryView entry, Long logVersion) {
+<span class="fc" id="L25">		return new WorkEntryResponse(entry.id(), logVersion, entry.description(), entry.location(),</span>
+<span class="fc" id="L26">				entry.startTime(), entry.endTime(), entry.totalHours(), entry.totalWorkers(),</span>
+<span class="fc" id="L27">				entry.crewAssignments().stream().map(row -&gt; CrewAssignmentResponse.of(row, logVersion)).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -127,17 +127,17 @@ public class Incident extends BaseEntity {
 <span class="fc" id="L127">	}</span>
 
 	public void removeCorrectiveAction(CorrectiveAction action) {
-<span class="nc" id="L130">		correctiveActions.remove(action);</span>
-<span class="nc" id="L131">		action.setIncident(null);</span>
-<span class="nc" id="L132">	}</span>
+<span class="fc" id="L130">		correctiveActions.remove(action);</span>
+<span class="fc" id="L131">		action.setIncident(null);</span>
+<span class="fc" id="L132">	}</span>
 
 	public void addAffectedCrew(Crew crew) {
 <span class="fc" id="L135">		affectedCrews.add(crew);</span>
 <span class="fc" id="L136">	}</span>
 
 	public void removeAffectedCrew(Crew crew) {
-<span class="nc" id="L139">		affectedCrews.remove(crew);</span>
-<span class="nc" id="L140">	}</span>
+<span class="fc" id="L139">		affectedCrews.remove(crew);</span>
+<span class="fc" id="L140">	}</span>
 
 	public Site getSite() {
 <span class="fc" id="L143">		return site;</span>
@@ -148,88 +148,88 @@ public class Incident extends BaseEntity {
 	}
 
 	public void setDailyLog(DailyLog dailyLog) {
-<span class="nc" id="L151">		this.dailyLog = dailyLog;</span>
-<span class="nc" id="L152">	}</span>
+<span class="fc" id="L151">		this.dailyLog = dailyLog;</span>
+<span class="fc" id="L152">	}</span>
 
 	public Instant getOccurredAt() {
-<span class="nc" id="L155">		return occurredAt;</span>
+<span class="fc" id="L155">		return occurredAt;</span>
 	}
 
 	public void setOccurredAt(Instant occurredAt) {
-<span class="nc" id="L159">		this.occurredAt = occurredAt;</span>
-<span class="nc" id="L160">	}</span>
+<span class="fc" id="L159">		this.occurredAt = occurredAt;</span>
+<span class="fc" id="L160">	}</span>
 
 	public String getTitle() {
 <span class="fc" id="L163">		return title;</span>
 	}
 
 	public void setTitle(String title) {
-<span class="nc" id="L167">		this.title = title;</span>
-<span class="nc" id="L168">	}</span>
+<span class="fc" id="L167">		this.title = title;</span>
+<span class="fc" id="L168">	}</span>
 
 	public String getDescription() {
-<span class="nc" id="L171">		return description;</span>
+<span class="fc" id="L171">		return description;</span>
 	}
 
 	public void setDescription(String description) {
-<span class="nc" id="L175">		this.description = description;</span>
-<span class="nc" id="L176">	}</span>
+<span class="fc" id="L175">		this.description = description;</span>
+<span class="fc" id="L176">	}</span>
 
 	public Severity getSeverity() {
-<span class="nc" id="L179">		return severity;</span>
+<span class="fc" id="L179">		return severity;</span>
 	}
 
 	public void setSeverity(Severity severity) {
-<span class="nc" id="L183">		this.severity = severity;</span>
-<span class="nc" id="L184">	}</span>
+<span class="fc" id="L183">		this.severity = severity;</span>
+<span class="fc" id="L184">	}</span>
 
 	public IncidentCategory getCategory() {
-<span class="nc" id="L187">		return category;</span>
+<span class="fc" id="L187">		return category;</span>
 	}
 
 	public void setCategory(IncidentCategory category) {
-<span class="nc" id="L191">		this.category = category;</span>
-<span class="nc" id="L192">	}</span>
+<span class="fc" id="L191">		this.category = category;</span>
+<span class="fc" id="L192">	}</span>
 
 	public IncidentStatus getStatus() {
 <span class="fc" id="L195">		return status;</span>
 	}
 
 	public void setStatus(IncidentStatus status) {
-<span class="nc" id="L199">		this.status = status;</span>
-<span class="nc" id="L200">	}</span>
+<span class="fc" id="L199">		this.status = status;</span>
+<span class="fc" id="L200">	}</span>
 
 	public String getRootCause() {
-<span class="nc" id="L203">		return rootCause;</span>
+<span class="fc" id="L203">		return rootCause;</span>
 	}
 
 	public void setRootCause(String rootCause) {
-<span class="nc" id="L207">		this.rootCause = rootCause;</span>
-<span class="nc" id="L208">	}</span>
+<span class="fc" id="L207">		this.rootCause = rootCause;</span>
+<span class="fc" id="L208">	}</span>
 
 	public String getWitnesses() {
-<span class="nc" id="L211">		return witnesses;</span>
+<span class="fc" id="L211">		return witnesses;</span>
 	}
 
 	public void setWitnesses(String witnesses) {
-<span class="nc" id="L215">		this.witnesses = witnesses;</span>
-<span class="nc" id="L216">	}</span>
+<span class="fc" id="L215">		this.witnesses = witnesses;</span>
+<span class="fc" id="L216">	}</span>
 
 	public String getMedicalTreatment() {
-<span class="nc" id="L219">		return medicalTreatment;</span>
+<span class="fc" id="L219">		return medicalTreatment;</span>
 	}
 
 	public void setMedicalTreatment(String medicalTreatment) {
-<span class="nc" id="L223">		this.medicalTreatment = medicalTreatment;</span>
-<span class="nc" id="L224">	}</span>
+<span class="fc" id="L223">		this.medicalTreatment = medicalTreatment;</span>
+<span class="fc" id="L224">	}</span>
 
 	public Boolean getAuthorityNotified() {
-<span class="nc" id="L227">		return authorityNotified;</span>
+<span class="fc" id="L227">		return authorityNotified;</span>
 	}
 
 	public void setAuthorityNotified(Boolean authorityNotified) {
-<span class="nc" id="L231">		this.authorityNotified = authorityNotified;</span>
-<span class="nc" id="L232">	}</span>
+<span class="fc" id="L231">		this.authorityNotified = authorityNotified;</span>
+<span class="fc" id="L232">	}</span>
 
 	public AppUser getReportedBy() {
 <span class="fc" id="L235">		return reportedBy;</span>
@@ -240,16 +240,16 @@ public class Incident extends BaseEntity {
 	}
 
 	public void setSignedOffBy(AppUser signedOffBy) {
-<span class="nc" id="L243">		this.signedOffBy = signedOffBy;</span>
-<span class="nc" id="L244">	}</span>
+<span class="fc" id="L243">		this.signedOffBy = signedOffBy;</span>
+<span class="fc" id="L244">	}</span>
 
 	public Instant getSignedOffAt() {
-<span class="nc" id="L247">		return signedOffAt;</span>
+<span class="fc" id="L247">		return signedOffAt;</span>
 	}
 
 	public void setSignedOffAt(Instant signedOffAt) {
-<span class="nc" id="L251">		this.signedOffAt = signedOffAt;</span>
-<span class="nc" id="L252">	}</span>
+<span class="fc" id="L251">		this.signedOffAt = signedOffAt;</span>
+<span class="fc" id="L252">	}</span>
 
 	public Long getVersion() {
 <span class="fc" id="L255">		return version;</span>

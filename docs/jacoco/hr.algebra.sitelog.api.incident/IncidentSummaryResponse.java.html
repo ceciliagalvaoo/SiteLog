@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentSummaryResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.incident</a> &gt; <span class="el_source">IncidentSummaryResponse.java</span></div><h1>IncidentSummaryResponse.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.incident;
+
+import java.time.OffsetDateTime;
+
+import hr.algebra.sitelog.incident.domain.IncidentCategory;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.service.IncidentListItem;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/** One row of an incident collection. */
+@Schema(description = &quot;Incident row of a list&quot;)
+<span class="fc" id="L13">public record IncidentSummaryResponse(Long id, Long siteId, String siteCode, String siteName,</span>
+		OffsetDateTime occurredAt, String title, Severity severity, IncidentCategory category, IncidentStatus status,
+		String reportedByName) {
+
+	static IncidentSummaryResponse of(IncidentListItem item) {
+<span class="fc" id="L18">		return new IncidentSummaryResponse(item.id(), item.siteId(), item.siteCode(), item.siteName(),</span>
+<span class="fc" id="L19">				item.occurredAt().toOffsetDateTime(), item.title(), item.severity(), item.category(), item.status(),</span>
+<span class="fc" id="L20">				item.reportedByName());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

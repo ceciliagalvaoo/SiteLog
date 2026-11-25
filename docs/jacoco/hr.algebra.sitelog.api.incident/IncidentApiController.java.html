@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.incident</a> &gt; <span class="el_source">IncidentApiController.java</span></div><h1>IncidentApiController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.incident;
+
+import java.net.URI;
+import java.util.Set;
+
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import hr.algebra.sitelog.api.common.ApiPaging;
+import hr.algebra.sitelog.api.common.PageResponse;
+import hr.algebra.sitelog.api.docs.ApiDocs;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.service.IncidentFilter;
+import hr.algebra.sitelog.incident.service.IncidentService;
+import hr.algebra.sitelog.site.service.SiteService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+/**
+ * Incidents (AR2): the collection of a site ({@code /api/v1/sites/{siteId}/incidents}), the
+ * collection of all sites ({@code /api/v1/incidents}) and one incident
+ * ({@code /api/v1/incidents/{id}}). Every rule is in {@link IncidentService}: only the
+ * SITE_MANAGER of the site reports (403), HIGH / CRITICAL need four extra fields (422 with the
+ * missing ones) and a SAFETY_SUPERVISOR sign-off (403 for a manager), workflow order (409),
+ * version check (409).
+ *
+ * &lt;p&gt;The workflow steps are {@code POST .../start-review|sign-off|close}: transitions with side
+ * effects (who and when, notifications, audit), not a {@code status} field a client may PUT.
+ */
+@RestController
+@RequestMapping(&quot;/api/v1&quot;)
+@Tag(name = &quot;Incidents&quot;, description = &quot;&quot;&quot;
+		Safety incidents and the severity workflow REPORTED -&gt; UNDER_REVIEW -&gt; SIGNED_OFF -&gt; CLOSED. \
+		Reading: any signed-in user. Reporting: the SITE_MANAGER of the site. HIGH and CRITICAL need \
+		root cause, witnesses, medical treatment and authority notified (422 otherwise) and are signed \
+		off by a SAFETY_SUPERVISOR only (403 for anyone else).&quot;&quot;&quot;)
+public class IncidentApiController {
+
+<span class="fc" id="L59">	static final Set&lt;String&gt; SORTABLE = Set.of(&quot;occurredAt&quot;, &quot;severity&quot;, &quot;status&quot;, &quot;title&quot;);</span>
+
+<span class="fc" id="L61">	static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.DESC, &quot;occurredAt&quot;);</span>
+
+	private final IncidentService incidentService;
+
+	private final SiteService siteService;
+
+<span class="fc" id="L67">	public IncidentApiController(IncidentService incidentService, SiteService siteService) {</span>
+<span class="fc" id="L68">		this.incidentService = incidentService;</span>
+<span class="fc" id="L69">		this.siteService = siteService;</span>
+<span class="fc" id="L70">	}</span>
+
+	// ---------------------------------------------------------------- collections
+
+	@GetMapping(&quot;/sites/{siteId}/incidents&quot;)
+	@Operation(summary = &quot;List the incidents of a site&quot;, description = &quot;&quot;&quot;
+			Paged and sorted (`?page=0&amp;size=20&amp;sort=occurredAt,desc`; size at most 100; sortable: \
+			occurredAt, severity, status, title; default occurredAt descending). Optional filters \
+			`status` and `severity`.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;One page of incidents&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Unknown sort property or filter value&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No site with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public PageResponse&lt;IncidentSummaryResponse&gt; listForSite(@PathVariable Long siteId,
+			@RequestParam(required = false) IncidentStatus status, @RequestParam(required = false) Severity severity,
+			@ParameterObject @PageableDefault(size = 20, sort = &quot;occurredAt&quot;, direction = Sort.Direction.DESC) Pageable pageable) {
+		// 404 for an unknown site instead of an empty page
+<span class="fc" id="L88">		siteService.getSummary(siteId);</span>
+<span class="fc" id="L89">		return page(new IncidentFilter(siteId, status, severity), pageable);</span>
+	}
+
+	@GetMapping(&quot;/incidents&quot;)
+	@Operation(summary = &quot;List the incidents of all sites&quot;, description = &quot;&quot;&quot;
+			Same paging, sorting and filters as the site collection, plus an optional `siteId`.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;One page of incidents&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Unknown sort property or filter value&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	public PageResponse&lt;IncidentSummaryResponse&gt; list(@RequestParam(required = false) Long siteId,
+			@RequestParam(required = false) IncidentStatus status, @RequestParam(required = false) Severity severity,
+			@ParameterObject @PageableDefault(size = 20, sort = &quot;occurredAt&quot;, direction = Sort.Direction.DESC) Pageable pageable) {
+<span class="fc" id="L101">		return page(new IncidentFilter(siteId, status, severity), pageable);</span>
+	}
+
+	@PostMapping(&quot;/sites/{siteId}/incidents&quot;)
+	@Operation(summary = &quot;Report an incident&quot;, description = &quot;&quot;&quot;
+			Only the SITE_MANAGER of this site. HIGH / CRITICAL: root cause, witnesses, medical treatment \
+			and authority notified are required (422 lists the missing ones) and every safety supervisor \
+			is notified.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;201&quot;, description = &quot;Created (status REPORTED); Location points to the new incident&quot;,
+			headers = @Header(name = &quot;Location&quot;, description = &quot;URL of the new incident&quot;))
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of this site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No site with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Missing HIGH / CRITICAL fields, future date, daily log of another site, inactive crew&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = {
+					@ExampleObject(name = &quot;missing severity fields&quot;, value = ApiDocs.UNPROCESSABLE_SEVERITY),
+					@ExampleObject(name = &quot;future date&quot;, value = ApiDocs.UNPROCESSABLE_INCIDENT) }))
+	public ResponseEntity&lt;IncidentResponse&gt; report(@PathVariable Long siteId,
+			@Validated @RequestBody IncidentRequest request) {
+<span class="fc" id="L123">		Long id = incidentService.report(siteId, request.toCommand());</span>
+<span class="fc" id="L124">		URI location = ServletUriComponentsBuilder.fromCurrentContextPath()</span>
+<span class="fc" id="L125">			.path(&quot;/api/v1/incidents/{id}&quot;)</span>
+<span class="fc" id="L126">			.buildAndExpand(id)</span>
+<span class="fc" id="L127">			.toUri();</span>
+<span class="fc" id="L128">		return ResponseEntity.created(location).body(IncidentResponse.of(incidentService.getDetail(id)));</span>
+	}
+
+	// ---------------------------------------------------------------- single incident
+
+	@GetMapping(&quot;/incidents/{id}&quot;)
+	@Operation(summary = &quot;Get an incident&quot;, description = &quot;The whole aggregate (crews, corrective actions, timeline) and its current version.&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The incident&quot;)
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public IncidentResponse get(@PathVariable Long id) {
+<span class="fc" id="L139">		return IncidentResponse.of(incidentService.getDetail(id));</span>
+	}
+
+	@PutMapping(&quot;/incidents/{id}&quot;)
+	@Operation(summary = &quot;Replace an incident&quot;, description = &quot;&quot;&quot;
+			While REPORTED (site manager of the site or safety supervisor) or UNDER_REVIEW (safety \
+			supervisor only). Only a supervisor may lower a HIGH / CRITICAL severity. `version` must be \
+			the current one.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The updated incident (new version)&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of the incident's site nor a safety supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale version, signed off / closed, or under review by a supervisor&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_INCIDENT_VERSION)))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Missing HIGH / CRITICAL fields, severity lowered by a manager, future date&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_SEVERITY)))
+	public IncidentResponse update(@PathVariable Long id, @Validated @RequestBody IncidentUpdateRequest request) {
+<span class="fc" id="L159">		incidentService.update(id, request.version(), request.toCommand());</span>
+<span class="fc" id="L160">		return IncidentResponse.of(incidentService.getDetail(id));</span>
+	}
+
+	@DeleteMapping(&quot;/incidents/{id}&quot;)
+	@Operation(summary = &quot;Delete an incident&quot;, description = &quot;Only a REPORTED incident without corrective actions, by the site manager of its site.&quot;)
+	@ApiResponse(responseCode = &quot;204&quot;, description = &quot;Deleted&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing version parameter&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of the incident's site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale version, not REPORTED, or has corrective actions&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_INCIDENT_VERSION)))
+	public ResponseEntity&lt;Void&gt; delete(@PathVariable Long id,
+			@Parameter(description = &quot;Version of the incident the client last read&quot;, required = true)
+			@RequestParam Long version) {
+<span class="fc" id="L177">		incidentService.delete(id, version);</span>
+<span class="fc" id="L178">		return ResponseEntity.noContent().build();</span>
+	}
+
+	// ---------------------------------------------------------------- workflow
+
+	@PostMapping(&quot;/incidents/{id}/start-review&quot;)
+	@Operation(summary = &quot;Start the review&quot;, description = &quot;&quot;&quot;
+			REPORTED -&gt; UNDER_REVIEW. SAFETY_SUPERVISOR on any site; the site manager only for LOW / \
+			MEDIUM incidents of his or her own site.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The incident under review&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing version&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;HIGH / CRITICAL and not a safety supervisor, or another site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale version, or not REPORTED&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_INCIDENT_VERSION)))
+	public IncidentResponse startReview(@PathVariable Long id, @Validated @RequestBody IncidentVersionRequest request) {
+<span class="fc" id="L197">		incidentService.startReview(id, request.version());</span>
+<span class="fc" id="L198">		return IncidentResponse.of(incidentService.getDetail(id));</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}/sign-off&quot;)
+	@Operation(summary = &quot;Sign off an incident&quot;, description = &quot;&quot;&quot;
+			UNDER_REVIEW -&gt; SIGNED_OFF, recording who and when. HIGH / CRITICAL: only a SAFETY_SUPERVISOR \
+			(a site manager gets 403) and only with every extra field filled (422). Two concurrent \
+			sign-offs of the same version: the first wins, the second gets 409.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The signed-off incident&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing version&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;HIGH / CRITICAL and not a safety supervisor, or another site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN_INCIDENT_SIGN_OFF)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale version, or not UNDER_REVIEW&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = {
+					@ExampleObject(name = &quot;stale version&quot;, value = ApiDocs.CONFLICT_INCIDENT_VERSION),
+					@ExampleObject(name = &quot;wrong state&quot;, value = ApiDocs.CONFLICT_INCIDENT_TRANSITION) }))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;HIGH / CRITICAL fields still missing&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_SEVERITY)))
+	public IncidentResponse signOff(@PathVariable Long id, @Validated @RequestBody IncidentVersionRequest request) {
+<span class="fc" id="L220">		incidentService.signOff(id, request.version());</span>
+<span class="fc" id="L221">		return IncidentResponse.of(incidentService.getDetail(id));</span>
+	}
+
+	@PostMapping(&quot;/incidents/{id}/close&quot;)
+	@Operation(summary = &quot;Close an incident&quot;, description = &quot;SIGNED_OFF -&gt; CLOSED, only when every corrective action is DONE.&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The closed incident&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Missing version&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;HIGH / CRITICAL and not a safety supervisor, or another site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No incident with this id&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale version, not SIGNED_OFF, or open corrective actions&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = {
+					@ExampleObject(name = &quot;open corrective actions&quot;, value = ApiDocs.CONFLICT_INCIDENT_OPEN_ACTIONS),
+					@ExampleObject(name = &quot;stale version&quot;, value = ApiDocs.CONFLICT_INCIDENT_VERSION) }))
+	public IncidentResponse close(@PathVariable Long id, @Validated @RequestBody IncidentVersionRequest request) {
+<span class="fc" id="L238">		incidentService.close(id, request.version());</span>
+<span class="fc" id="L239">		return IncidentResponse.of(incidentService.getDetail(id));</span>
+	}
+
+	private PageResponse&lt;IncidentSummaryResponse&gt; page(IncidentFilter filter, Pageable pageable) {
+<span class="fc" id="L243">		Pageable page = ApiPaging.restrict(pageable, SORTABLE, DEFAULT_SORT);</span>
+<span class="fc" id="L244">		return PageResponse.of(incidentService.list(filter, page), IncidentSummaryResponse::of);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

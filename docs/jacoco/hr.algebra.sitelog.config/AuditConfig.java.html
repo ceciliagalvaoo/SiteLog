@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.config</a> &gt; <span class="el_source">AuditConfig.java</span></div><h1>AuditConfig.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+
+/**
+ * Turns on {@code @Aspect} beans ({@code DomainActionAspect}). Spring Boot 4 only
+ * auto-configures this with its AspectJ starter; {@code aspectjweaver} already comes with
+ * Spring Data JPA, so enabling it here needs no extra dependency.
+ *
+ * &lt;p&gt;{@code proxyTargetClass = true}: the services are classes without interfaces, so the
+ * proxy is a subclass (CGLIB), the same kind method security and transactions already use.
+ * The aspect, {@code @PreAuthorize} and {@code @Transactional} share that one proxy; their
+ * {@code @Order} decides who runs first.
+ */
+@Configuration(proxyBeanMethods = false)
+@EnableAspectJAutoProxy(proxyTargetClass = true)
+<span class="fc" id="L18">public class AuditConfig {</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

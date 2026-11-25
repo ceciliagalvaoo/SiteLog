@@ -25,6 +25,7 @@ import hr.algebra.sitelog.crew.service.CrewService;
 import hr.algebra.sitelog.dailylog.domain.Weather;
 import hr.algebra.sitelog.dailylog.service.DailyLogDetails;
 import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.LogReopenService;
 import hr.algebra.sitelog.site.service.SiteListItem;
 import hr.algebra.sitelog.site.service.SiteService;
 
@@ -45,136 +46,161 @@ public class DailyLogController {
 
 	static final String FORM = &quot;dailyLogForm&quot;;
 
+	/** Model name of the &quot;request reopen&quot; modal form (also used by {@link LogReopenController}). */
+	static final String REOPEN_FORM = &quot;reopenForm&quot;;
+
+	/** Model name of the supervisor's &quot;reject reopen&quot; modal form. */
+	static final String REJECT_FORM = &quot;rejectForm&quot;;
+
 	private final DailyLogService dailyLogService;
 
 	private final SiteService siteService;
 
 	private final CrewService crewService;
 
+	private final LogReopenService reopenService;
+
 	private final Clock clock;
 
 	public DailyLogController(DailyLogService dailyLogService, SiteService siteService, CrewService crewService,
-<span class="fc" id="L57">			Clock clock) {</span>
-<span class="fc" id="L58">		this.dailyLogService = dailyLogService;</span>
-<span class="fc" id="L59">		this.siteService = siteService;</span>
-<span class="fc" id="L60">		this.crewService = crewService;</span>
-<span class="fc" id="L61">		this.clock = clock;</span>
-<span class="fc" id="L62">	}</span>
+<span class="fc" id="L66">			LogReopenService reopenService, Clock clock) {</span>
+<span class="fc" id="L67">		this.dailyLogService = dailyLogService;</span>
+<span class="fc" id="L68">		this.siteService = siteService;</span>
+<span class="fc" id="L69">		this.crewService = crewService;</span>
+<span class="fc" id="L70">		this.reopenService = reopenService;</span>
+<span class="fc" id="L71">		this.clock = clock;</span>
+<span class="fc" id="L72">	}</span>
 
 	@GetMapping(&quot;/daily-logs/{id}&quot;)
 	public String detail(@PathVariable Long id, Model model) {
-<span class="fc" id="L66">		DailyLogDetails log = dailyLogService.getDetail(id);</span>
-<span class="fc" id="L67">		model.addAttribute(&quot;log&quot;, log);</span>
-<span class="fc" id="L68">		model.addAttribute(&quot;contextTitle&quot;, log.siteName());</span>
-<span class="fc" id="L69">		return DETAIL_VIEW;</span>
+<span class="fc" id="L76">		return detail(model, dailyLogService, reopenService, id);</span>
+	}
+
+	/**
+	 * Model of the detail page: {@code log}, {@code reopen} (pending request + history, AR1) and the
+	 * two modal forms. Shared with {@link LogReopenController}, which re-renders this page when a
+	 * modal was submitted with errors (the form already in the model, with its errors, is kept).
+	 */
+	static String detail(Model model, DailyLogService dailyLogService, LogReopenService reopenService, Long id) {
+<span class="fc" id="L85">		DailyLogDetails log = dailyLogService.getDetail(id);</span>
+<span class="fc" id="L86">		model.addAttribute(&quot;log&quot;, log);</span>
+<span class="fc" id="L87">		model.addAttribute(&quot;reopen&quot;, reopenService.panel(id));</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (!model.containsAttribute(REOPEN_FORM)) {</span>
+<span class="fc" id="L89">			model.addAttribute(REOPEN_FORM, ReopenRequestForm.forVersion(log.version()));</span>
+		}
+<span class="fc bfc" id="L91" title="All 2 branches covered.">		if (!model.containsAttribute(REJECT_FORM)) {</span>
+<span class="fc" id="L92">			model.addAttribute(REJECT_FORM, new ReopenRejectForm());</span>
+		}
+<span class="fc" id="L94">		model.addAttribute(&quot;contextTitle&quot;, log.siteName());</span>
+<span class="fc" id="L95">		return DETAIL_VIEW;</span>
 	}
 
 	@GetMapping(&quot;/sites/{siteId}/daily-logs/new&quot;)
 	public String newForm(@PathVariable Long siteId, Model model) {
-<span class="fc" id="L74">		model.addAttribute(FORM, DailyLogForm.blank(LocalDate.now(clock)));</span>
-<span class="fc" id="L75">		return form(model, siteService.getSummaryForNewLog(siteId), null);</span>
+<span class="fc" id="L100">		model.addAttribute(FORM, DailyLogForm.blank(LocalDate.now(clock)));</span>
+<span class="fc" id="L101">		return form(model, siteService.getSummaryForNewLog(siteId), null);</span>
 	}
 
 	@PostMapping(&quot;/sites/{siteId}/daily-logs&quot;)
 	public String create(@PathVariable Long siteId, @Validated @ModelAttribute(FORM) DailyLogForm form,
 			BindingResult result, @RequestParam(name = &quot;action&quot;, required = false) String action, Model model,
 			RedirectAttributes redirect, Locale locale) {
-<span class="fc" id="L82">		form.compact();</span>
+<span class="fc" id="L108">		form.compact();</span>
 		// protected read: a row action re-renders the form, so it needs the same check as the save
-<span class="fc" id="L84">		SiteListItem site = siteService.getSummaryForNewLog(siteId);</span>
-<span class="fc bfc" id="L85" title="All 2 branches covered.">		if (!RowActions.isSave(action)) {</span>
-<span class="fc" id="L86">			return rowAction(form, action, model, site, null);</span>
+<span class="fc" id="L110">		SiteListItem site = siteService.getSummaryForNewLog(siteId);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">		if (!RowActions.isSave(action)) {</span>
+<span class="fc" id="L112">			return rowAction(form, action, model, site, null);</span>
 		}
-<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
 			try {
-<span class="fc" id="L90">				dailyLogService.create(siteId, form.toCommand());</span>
-<span class="fc" id="L91">				Flash.successWithDetail(redirect, &quot;dailyLog.flash.saved&quot;, &quot;dailyLog.flash.saved.detail&quot;,</span>
-<span class="fc" id="L92">						longDate(form.getLogDate(), locale));</span>
-<span class="fc" id="L93">				return &quot;redirect:/sites/&quot; + siteId;</span>
+<span class="fc" id="L116">				dailyLogService.create(siteId, form.toCommand());</span>
+<span class="fc" id="L117">				Flash.successWithDetail(redirect, &quot;dailyLog.flash.saved&quot;, &quot;dailyLog.flash.saved.detail&quot;,</span>
+<span class="fc" id="L118">						longDate(form.getLogDate(), locale));</span>
+<span class="fc" id="L119">				return &quot;redirect:/sites/&quot; + siteId;</span>
 			}
-<span class="fc" id="L95">			catch (InvalidFieldException e) {</span>
-<span class="fc" id="L96">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+<span class="fc" id="L121">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L122">				result.rejectValue(e.getField(), e.getMessageKey());</span>
 			}
 		}
-<span class="fc" id="L99">		return form(model, site, null);</span>
+<span class="fc" id="L125">		return form(model, site, null);</span>
 	}
 
 	@GetMapping(&quot;/daily-logs/{id}/edit&quot;)
 	public String editForm(@PathVariable Long id, Model model) {
-<span class="fc" id="L104">		DailyLogDetails log = dailyLogService.getForEdit(id);</span>
-<span class="fc" id="L105">		model.addAttribute(FORM, DailyLogForm.from(log));</span>
-<span class="fc" id="L106">		model.addAttribute(&quot;log&quot;, log);</span>
-<span class="fc" id="L107">		return form(model, siteService.getSummary(log.siteId()), id);</span>
+<span class="fc" id="L130">		DailyLogDetails log = dailyLogService.getForEdit(id);</span>
+<span class="fc" id="L131">		model.addAttribute(FORM, DailyLogForm.from(log));</span>
+<span class="fc" id="L132">		model.addAttribute(&quot;log&quot;, log);</span>
+<span class="fc" id="L133">		return form(model, siteService.getSummary(log.siteId()), id);</span>
 	}
 
 	@PostMapping(&quot;/daily-logs/{id}&quot;)
 	public String update(@PathVariable Long id, @Validated @ModelAttribute(FORM) DailyLogForm form,
 			BindingResult result, @RequestParam(name = &quot;action&quot;, required = false) String action, Model model,
 			RedirectAttributes redirect, Locale locale) {
-<span class="fc" id="L114">		form.compact();</span>
-<span class="fc" id="L115">		DailyLogDetails log = dailyLogService.getForEdit(id);</span>
-<span class="fc" id="L116">		model.addAttribute(&quot;log&quot;, log);</span>
-<span class="fc" id="L117">		SiteListItem site = siteService.getSummary(log.siteId());</span>
-<span class="fc bfc" id="L118" title="All 2 branches covered.">		if (!RowActions.isSave(action)) {</span>
-<span class="fc" id="L119">			return rowAction(form, action, model, site, id);</span>
+<span class="fc" id="L140">		form.compact();</span>
+<span class="fc" id="L141">		DailyLogDetails log = dailyLogService.getForEdit(id);</span>
+<span class="fc" id="L142">		model.addAttribute(&quot;log&quot;, log);</span>
+<span class="fc" id="L143">		SiteListItem site = siteService.getSummary(log.siteId());</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">		if (!RowActions.isSave(action)) {</span>
+<span class="fc" id="L145">			return rowAction(form, action, model, site, id);</span>
 		}
-<span class="pc bpc" id="L121" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">		if (!result.hasErrors()) {</span>
 			try {
-<span class="fc" id="L123">				dailyLogService.update(id, form.getVersion(), form.toCommand());</span>
-<span class="fc" id="L124">				Flash.success(redirect, &quot;dailyLog.flash.updated&quot;, longDate(form.getLogDate(), locale));</span>
-<span class="fc" id="L125">				return &quot;redirect:/daily-logs/&quot; + id;</span>
+<span class="fc" id="L149">				dailyLogService.update(id, form.getVersion(), form.toCommand());</span>
+<span class="fc" id="L150">				Flash.success(redirect, &quot;dailyLog.flash.updated&quot;, longDate(form.getLogDate(), locale));</span>
+<span class="fc" id="L151">				return &quot;redirect:/daily-logs/&quot; + id;</span>
 			}
-<span class="nc" id="L127">			catch (InvalidFieldException e) {</span>
-<span class="nc" id="L128">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+<span class="nc" id="L153">			catch (InvalidFieldException e) {</span>
+<span class="nc" id="L154">				result.rejectValue(e.getField(), e.getMessageKey());</span>
 			}
 		}
-<span class="nc" id="L131">		return form(model, site, id);</span>
+<span class="nc" id="L157">		return form(model, site, id);</span>
 	}
 
 	/** Sign-off (AR1): from now on the log is locked; {@code version} is the one shown on the page. */
 	@PostMapping(&quot;/daily-logs/{id}/sign-off&quot;)
 	public String signOff(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
-<span class="fc" id="L137">		dailyLogService.signOff(id, version);</span>
-<span class="fc" id="L138">		Flash.success(redirect, &quot;dailyLog.flash.signedOff&quot;);</span>
-<span class="fc" id="L139">		return &quot;redirect:/daily-logs/&quot; + id;</span>
+<span class="fc" id="L163">		dailyLogService.signOff(id, version);</span>
+<span class="fc" id="L164">		Flash.success(redirect, &quot;dailyLog.flash.signedOff&quot;);</span>
+<span class="fc" id="L165">		return &quot;redirect:/daily-logs/&quot; + id;</span>
 	}
 
 	/** Delete a DRAFT log (confirmed in a modal) with its work entries and crew rows. */
 	@PostMapping(&quot;/daily-logs/{id}/delete&quot;)
 	public String delete(@PathVariable Long id, @RequestParam Long version, RedirectAttributes redirect) {
 		try {
-<span class="fc" id="L146">			Long siteId = dailyLogService.delete(id, version);</span>
-<span class="fc" id="L147">			Flash.success(redirect, &quot;dailyLog.flash.deleted&quot;);</span>
-<span class="fc" id="L148">			return &quot;redirect:/sites/&quot; + siteId + &quot;?tab=logs&quot;;</span>
+<span class="fc" id="L172">			Long siteId = dailyLogService.delete(id, version);</span>
+<span class="fc" id="L173">			Flash.success(redirect, &quot;dailyLog.flash.deleted&quot;);</span>
+<span class="fc" id="L174">			return &quot;redirect:/sites/&quot; + siteId + &quot;?tab=logs&quot;;</span>
 		}
-<span class="fc" id="L150">		catch (DeletionNotAllowedException e) {</span>
-<span class="fc" id="L151">			Flash.error(redirect, e.getMessageKey());</span>
-<span class="fc" id="L152">			return &quot;redirect:/daily-logs/&quot; + id;</span>
+<span class="fc" id="L176">		catch (DeletionNotAllowedException e) {</span>
+<span class="fc" id="L177">			Flash.error(redirect, e.getMessageKey());</span>
+<span class="fc" id="L178">			return &quot;redirect:/daily-logs/&quot; + id;</span>
 		}
 	}
 
 	private String rowAction(DailyLogForm form, String action, Model model, SiteListItem site, Long logId) {
-<span class="fc" id="L157">		form.applyRowAction(action);</span>
+<span class="fc" id="L183">		form.applyRowAction(action);</span>
 		// nothing was saved: drop the errors of this half-filled form (indexes may have shifted, too)
-<span class="fc" id="L159">		model.asMap().remove(BindingResult.MODEL_KEY_PREFIX + FORM);</span>
-<span class="fc" id="L160">		model.addAttribute(FORM, form);</span>
-<span class="fc" id="L161">		return form(model, site, logId);</span>
+<span class="fc" id="L185">		model.asMap().remove(BindingResult.MODEL_KEY_PREFIX + FORM);</span>
+<span class="fc" id="L186">		model.addAttribute(FORM, form);</span>
+<span class="fc" id="L187">		return form(model, site, logId);</span>
 	}
 
 	private String form(Model model, SiteListItem site, Long logId) {
-<span class="fc" id="L165">		DailyLogForm form = (DailyLogForm) model.getAttribute(FORM);</span>
-<span class="fc" id="L166">		model.addAttribute(&quot;site&quot;, site);</span>
-<span class="fc" id="L167">		model.addAttribute(&quot;logId&quot;, logId);</span>
-<span class="fc bfc" id="L168" title="All 2 branches covered.">		model.addAttribute(&quot;formAction&quot;, logId == null ? &quot;/sites/&quot; + site.id() + &quot;/daily-logs&quot; : &quot;/daily-logs/&quot; + logId);</span>
-<span class="pc bpc" id="L169" title="1 of 2 branches missed.">		model.addAttribute(&quot;crews&quot;, crewService.optionsIncluding(form == null ? List.of() : form.selectedCrewIds()));</span>
-<span class="fc" id="L170">		model.addAttribute(&quot;weathers&quot;, Weather.values());</span>
-<span class="fc" id="L171">		model.addAttribute(&quot;contextTitle&quot;, site.name());</span>
-<span class="fc" id="L172">		return FORM_VIEW;</span>
+<span class="fc" id="L191">		DailyLogForm form = (DailyLogForm) model.getAttribute(FORM);</span>
+<span class="fc" id="L192">		model.addAttribute(&quot;site&quot;, site);</span>
+<span class="fc" id="L193">		model.addAttribute(&quot;logId&quot;, logId);</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">		model.addAttribute(&quot;formAction&quot;, logId == null ? &quot;/sites/&quot; + site.id() + &quot;/daily-logs&quot; : &quot;/daily-logs/&quot; + logId);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">		model.addAttribute(&quot;crews&quot;, crewService.optionsIncluding(form == null ? List.of() : form.selectedCrewIds()));</span>
+<span class="fc" id="L196">		model.addAttribute(&quot;weathers&quot;, Weather.values());</span>
+<span class="fc" id="L197">		model.addAttribute(&quot;contextTitle&quot;, site.name());</span>
+<span class="fc" id="L198">		return FORM_VIEW;</span>
 	}
 
 	/** &quot;Saturday, 7 November 2026&quot; in the UI language, for the flash text. */
 	static String longDate(LocalDate date, Locale locale) {
-<span class="pc bpc" id="L177" title="1 of 2 branches missed.">		return date == null ? &quot;&quot; : DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale).format(date);</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">		return date == null ? &quot;&quot; : DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale).format(date);</span>
 	}
 
 }

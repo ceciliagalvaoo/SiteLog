@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntryWriteRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">WorkEntryWriteRequest.java</span></div><h1>WorkEntryWriteRequest.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Objects;
+
+import hr.algebra.sitelog.common.validation.Chronological;
+import hr.algebra.sitelog.dailylog.service.WorkEntryCommand;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/**
+ * Body of {@code POST}/{@code PUT} on one work entry (outside the full log). {@code logVersion}
+ * is the version of the daily log the client last read (409 when it changed). On PUT the crew
+ * rows are synchronised like the form: rows with an id are changed, rows without one added,
+ * rows left out removed.
+ */
+@Chronological(before = &quot;startTime&quot;, after = &quot;endTime&quot;, strict = true,
+		message = &quot;{validation.workEntry.endTime.afterStart}&quot;)
+@Schema(description = &quot;Work entry to create or replace&quot;)
+<span class="fc" id="L24">public record WorkEntryWriteRequest(</span>
+		@NotNull(message = &quot;{validation.version.required}&quot;)
+		@Schema(description = &quot;Version of the daily log the client last read&quot;, example = &quot;3&quot;)
+		Long logVersion,
+
+		@NotBlank(message = &quot;{validation.workEntry.description.required}&quot;)
+		@Size(max = 500, message = &quot;{validation.size.max}&quot;)
+		@Schema(example = &quot;Concrete pouring, slab level 2&quot;)
+		String description,
+
+		@Size(max = 150, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, example = &quot;Block B&quot;)
+		String location,
+
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;, nullable = true, example = &quot;07:00:00&quot;)
+		LocalTime startTime,
+
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;, nullable = true, example = &quot;15:30:00&quot;,
+				description = &quot;After startTime&quot;)
+		LocalTime endTime,
+
+		List&lt;@Valid CrewAssignmentRequest&gt; crewAssignments) {
+
+	WorkEntryCommand toCommand() {
+<span class="fc" id="L48">		return new WorkEntryCommand(null, description, location, startTime, endTime,</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">				crewAssignments == null ? List.of() : crewAssignments.stream().filter(Objects::nonNull).map(CrewAssignmentRequest::toCommand).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

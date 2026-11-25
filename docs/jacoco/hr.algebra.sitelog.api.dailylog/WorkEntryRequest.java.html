@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkEntryRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">WorkEntryRequest.java</span></div><h1>WorkEntryRequest.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Objects;
+
+import hr.algebra.sitelog.common.validation.Chronological;
+import hr.algebra.sitelog.dailylog.service.WorkEntryCommand;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+/**
+ * One work entry nested in a daily log request ({@code workEntries[i]}), with its crew rows
+ * ({@code workEntries[i].crewAssignments[j]}). The names mirror the form, so a business error
+ * on a row comes back with the same property path the client sent.
+ *
+ * @param id null for a new entry; the id of an existing entry to keep and change it (on PUT,
+ *           entries left out are removed with their crew rows)
+ */
+@Chronological(before = &quot;startTime&quot;, after = &quot;endTime&quot;, strict = true,
+		message = &quot;{validation.workEntry.endTime.afterStart}&quot;)
+@Schema(description = &quot;Work entry of a daily log&quot;)
+<span class="fc" id="L25">public record WorkEntryRequest(</span>
+		@Schema(description = &quot;Existing entry to keep and change; omit for a new entry&quot;, nullable = true)
+		Long id,
+
+		@NotBlank(message = &quot;{validation.workEntry.description.required}&quot;)
+		@Size(max = 500, message = &quot;{validation.size.max}&quot;)
+		@Schema(example = &quot;Concrete pouring, slab level 2&quot;)
+		String description,
+
+		@Size(max = 150, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, example = &quot;Block B&quot;)
+		String location,
+
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;, nullable = true, example = &quot;07:00:00&quot;)
+		LocalTime startTime,
+
+		@Schema(type = &quot;string&quot;, format = &quot;time&quot;, nullable = true, example = &quot;15:30:00&quot;,
+				description = &quot;After startTime&quot;)
+		LocalTime endTime,
+
+		List&lt;@Valid CrewAssignmentRequest&gt; crewAssignments) {
+
+	WorkEntryCommand toCommand() {
+<span class="fc" id="L48">		return new WorkEntryCommand(id, description, location, startTime, endTime,</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">				crewAssignments == null ? List.of() : crewAssignments.stream().filter(Objects::nonNull).map(CrewAssignmentRequest::toCommand).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

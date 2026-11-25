@@ -11,6 +11,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import hr.algebra.sitelog.audit.aspect.AuditedAction;
+import hr.algebra.sitelog.audit.domain.DomainActionType;
 import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
 import hr.algebra.sitelog.common.exception.InvalidFieldException;
 import hr.algebra.sitelog.common.exception.InvalidTransitionException;
@@ -34,7 +36,8 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * &lt;ul&gt;
  * &lt;li&gt;&lt;b&gt;AR1 part 1 - lock after sign-off.&lt;/b&gt; Every write checks {@link LogStatus#isEditable()}
  * first and throws {@code LogLockedException} (409); the V3 trigger rejects the same writes in the
- * database. Reopen with reason and approval is milestone M3.&lt;/li&gt;
+ * database. Reopen with reason and supervisor approval is {@link LogReopenService}; after an
+ * approved reopen the log is REOPENED, editable again, and {@link #signOff} locks it again.&lt;/li&gt;
  * &lt;li&gt;&lt;b&gt;Optimistic locking.&lt;/b&gt; The form sends the version it was loaded with; a different
  * current version, or a concurrent commit caught by {@code @Version}, ends as
  * {@code ObjectOptimisticLockingFailureException} (409). Because an update may change only
@@ -80,103 +83,103 @@ public class DailyLogService {
 
 	public DailyLogService(DailyLogRepository dailyLogs, SiteRepository sites, IncidentRepository incidents,
 			LogReopenRequestRepository reopenRequests, AppUserRepository users, CurrentUserProvider currentUser,
-<span class="fc" id="L83">			DailyLogAssembler assembler, Clock clock) {</span>
-<span class="fc" id="L84">		this.dailyLogs = dailyLogs;</span>
-<span class="fc" id="L85">		this.sites = sites;</span>
-<span class="fc" id="L86">		this.incidents = incidents;</span>
-<span class="fc" id="L87">		this.reopenRequests = reopenRequests;</span>
-<span class="fc" id="L88">		this.users = users;</span>
-<span class="fc" id="L89">		this.currentUser = currentUser;</span>
-<span class="fc" id="L90">		this.assembler = assembler;</span>
-<span class="fc" id="L91">		this.clock = clock;</span>
-<span class="fc" id="L92">	}</span>
+<span class="fc" id="L86">			DailyLogAssembler assembler, Clock clock) {</span>
+<span class="fc" id="L87">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L88">		this.sites = sites;</span>
+<span class="fc" id="L89">		this.incidents = incidents;</span>
+<span class="fc" id="L90">		this.reopenRequests = reopenRequests;</span>
+<span class="fc" id="L91">		this.users = users;</span>
+<span class="fc" id="L92">		this.currentUser = currentUser;</span>
+<span class="fc" id="L93">		this.assembler = assembler;</span>
+<span class="fc" id="L94">		this.clock = clock;</span>
+<span class="fc" id="L95">	}</span>
 
 	/**
 	 * A site's log list with work entry count, crew count and crew hours per row, computed by one
 	 * aggregate query (the N+1 fix, see {@code docs/performance.md}).
 	 */
 	public Page&lt;DailyLogSummary&gt; listForSite(Long siteId, Pageable pageable) {
-<span class="fc" id="L99">		return dailyLogs.findSummariesBySiteId(siteId, pageable);</span>
+<span class="fc" id="L102">		return dailyLogs.findSummariesBySiteId(siteId, pageable);</span>
 	}
 
 	/** Detail page: the whole aggregate in one SQL statement ({@code findDetailById}). */
 	public DailyLogDetails getDetail(Long id) {
-<span class="fc" id="L104">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
-<span class="fc" id="L105">		return toDetails(log, isDeletable(log));</span>
+<span class="fc" id="L107">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L108">		return toDetails(log, isDeletable(log));</span>
 	}
 
 	/** Same data as the detail, refused for a locked log (the edit form is not offered). */
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)&quot;)
 	public DailyLogDetails getForEdit(Long id) {
-<span class="pc" id="L111">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
-<span class="fc" id="L112">		DailyLogRules.requireEditable(log);</span>
-<span class="fc" id="L113">		return toDetails(log, isDeletable(log));</span>
+<span class="pc" id="L114">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L115">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L116">		return toDetails(log, isDeletable(log));</span>
 	}
 
 	/** Header of the child pages (work entry / crew assignment forms). */
 	public DailyLogHeader getHeader(Long id) {
-<span class="fc" id="L118">		return dailyLogs.findWithSiteById(id).map(DailyLogHeader::of)</span>
-<span class="fc" id="L119">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L121">		return dailyLogs.findWithSiteById(id).map(DailyLogHeader::of)</span>
+<span class="fc" id="L122">			.orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
 	}
 
 	/** Header for a page that changes a child (new / edit work entry or crew row): refused when locked. */
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)&quot;)
 	public DailyLogHeader getHeaderForChange(Long id) {
-<span class="pc" id="L125">		DailyLog log = dailyLogs.findWithSiteById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
-<span class="fc" id="L126">		DailyLogRules.requireEditable(log);</span>
-<span class="fc" id="L127">		return DailyLogHeader.of(log);</span>
+<span class="pc" id="L128">		DailyLog log = dailyLogs.findWithSiteById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L129">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L130">		return DailyLogHeader.of(log);</span>
 	}
 
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)&quot;)
 	@Transactional
 	public Long create(Long siteId, DailyLogCommand command) {
-<span class="fc" id="L133">		Site site = sites.findById(siteId).orElseThrow(() -&gt; new NotFoundException(Site.class, siteId));</span>
-<span class="fc" id="L134">		checkDate(command.logDate());</span>
-<span class="fc bfc" id="L135" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDate(siteId, command.logDate())) {</span>
-<span class="fc" id="L136">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
+<span class="fc" id="L136">		Site site = sites.findById(siteId).orElseThrow(() -&gt; new NotFoundException(Site.class, siteId));</span>
+<span class="fc" id="L137">		checkDate(command.logDate());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDate(siteId, command.logDate())) {</span>
+<span class="fc" id="L139">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
 		}
-<span class="fc" id="L138">		DailyLog log = new DailyLog(site, command.logDate());</span>
-<span class="fc" id="L139">		log.setWeather(command.weather());</span>
-<span class="fc" id="L140">		log.setNotes(command.notes());</span>
-<span class="fc" id="L141">		assembler.syncWorkEntries(log, command.workEntries());</span>
-<span class="fc" id="L142">		return dailyLogs.save(log).getId();</span>
+<span class="fc" id="L141">		DailyLog log = new DailyLog(site, command.logDate());</span>
+<span class="fc" id="L142">		log.setWeather(command.weather());</span>
+<span class="fc" id="L143">		log.setNotes(command.notes());</span>
+<span class="fc" id="L144">		assembler.syncWorkEntries(log, command.workEntries());</span>
+<span class="fc" id="L145">		return dailyLogs.save(log).getId();</span>
 	}
 
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)&quot;)
 	@Transactional
 	public void update(Long id, Long expectedVersion, DailyLogCommand command) {
 		// 1) registers OPTIMISTIC_FORCE_INCREMENT on the root: version + 1 at commit even if only children change
-<span class="fc" id="L149">		DailyLog log = dailyLogs.findForChildUpdateById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L152">		DailyLog log = dailyLogs.findForChildUpdateById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
 		// 2) same managed instance, now with work entries, assignments and crews initialised
-<span class="fc" id="L151">		dailyLogs.findDetailById(id);</span>
-<span class="fc" id="L152">		DailyLogRules.requireVersion(log, expectedVersion);</span>
-<span class="fc" id="L153">		DailyLogRules.requireEditable(log);</span>
-<span class="fc" id="L154">		checkDate(command.logDate());</span>
-<span class="fc bfc" id="L155" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDateAndIdNot(log.getSite().getId(), command.logDate(), id)) {</span>
-<span class="fc" id="L156">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
+<span class="fc" id="L154">		dailyLogs.findDetailById(id);</span>
+<span class="fc" id="L155">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc" id="L156">		DailyLogRules.requireEditable(log);</span>
+<span class="fc" id="L157">		checkDate(command.logDate());</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">		if (dailyLogs.existsBySite_IdAndLogDateAndIdNot(log.getSite().getId(), command.logDate(), id)) {</span>
+<span class="fc" id="L159">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_DUPLICATE);</span>
 		}
-<span class="fc" id="L158">		log.setLogDate(command.logDate());</span>
-<span class="fc" id="L159">		log.setWeather(command.weather());</span>
-<span class="fc" id="L160">		log.setNotes(command.notes());</span>
-<span class="fc" id="L161">		assembler.syncWorkEntries(log, command.workEntries());</span>
-<span class="fc" id="L162">	}</span>
+<span class="fc" id="L161">		log.setLogDate(command.logDate());</span>
+<span class="fc" id="L162">		log.setWeather(command.weather());</span>
+<span class="fc" id="L163">		log.setNotes(command.notes());</span>
+<span class="fc" id="L164">		assembler.syncWorkEntries(log, command.workEntries());</span>
+<span class="fc" id="L165">	}</span>
 
 	/** Deletes a DRAFT log with its work entries and crew rows; returns the site id for the redirect. */
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)&quot;)
 	@Transactional
 	public Long delete(Long id, Long expectedVersion) {
-<span class="fc" id="L168">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
-<span class="fc" id="L169">		DailyLogRules.requireVersion(log, expectedVersion);</span>
-<span class="fc" id="L170">		DailyLogRules.requireEditable(log);</span>
-<span class="fc bfc" id="L171" title="All 2 branches covered.">		if (log.getStatus() != LogStatus.DRAFT) {</span>
-<span class="fc" id="L172">			throw new DeletionNotAllowedException(DELETE_NOT_DRAFT, &quot;daily_log &quot; + id + &quot; is &quot; + log.getStatus());</span>
+<span class="fc" id="L171">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L172">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc" id="L173">		DailyLogRules.requireEditable(log);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">		if (log.getStatus() != LogStatus.DRAFT) {</span>
+<span class="fc" id="L175">			throw new DeletionNotAllowedException(DELETE_NOT_DRAFT, &quot;daily_log &quot; + id + &quot; is &quot; + log.getStatus());</span>
 		}
-<span class="fc bfc" id="L174" title="All 4 branches covered.">		if (incidents.existsByDailyLog_Id(id) || reopenRequests.existsByDailyLog_Id(id)) {</span>
-<span class="fc" id="L175">			throw new DeletionNotAllowedException(DELETE_LINKED, &quot;daily_log &quot; + id + &quot; is referenced&quot;);</span>
+<span class="fc bfc" id="L177" title="All 4 branches covered.">		if (incidents.existsByDailyLog_Id(id) || reopenRequests.existsByDailyLog_Id(id)) {</span>
+<span class="fc" id="L178">			throw new DeletionNotAllowedException(DELETE_LINKED, &quot;daily_log &quot; + id + &quot; is referenced&quot;);</span>
 		}
-<span class="fc" id="L177">		Long siteId = log.getSite().getId();</span>
-<span class="fc" id="L178">		dailyLogs.delete(log);</span>
-<span class="fc" id="L179">		return siteId;</span>
+<span class="fc" id="L180">		Long siteId = log.getSite().getId();</span>
+<span class="fc" id="L181">		dailyLogs.delete(log);</span>
+<span class="fc" id="L182">		return siteId;</span>
 	}
 
 	/**
@@ -186,42 +189,43 @@ public class DailyLogService {
 	 * fails with 409. Only the manager of the log's site may sign it off.
 	 */
 	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)&quot;)
+	@AuditedAction(DomainActionType.LOG_SIGNED_OFF)
 	@Transactional
 	public void signOff(Long id, Long expectedVersion) {
-<span class="fc" id="L191">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
-<span class="fc" id="L192">		DailyLogRules.requireVersion(log, expectedVersion);</span>
-<span class="fc bfc" id="L193" title="All 2 branches covered.">		if (log.getStatus() == LogStatus.SIGNED_OFF) {</span>
-<span class="fc" id="L194">			throw new InvalidTransitionException(ALREADY_SIGNED_OFF, &quot;daily_log &quot; + id + &quot; is already SIGNED_OFF&quot;);</span>
+<span class="fc" id="L195">		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(DailyLog.class, id));</span>
+<span class="fc" id="L196">		DailyLogRules.requireVersion(log, expectedVersion);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">		if (log.getStatus() == LogStatus.SIGNED_OFF) {</span>
+<span class="fc" id="L198">			throw new InvalidTransitionException(ALREADY_SIGNED_OFF, &quot;daily_log &quot; + id + &quot; is already SIGNED_OFF&quot;);</span>
 		}
-<span class="fc bfc" id="L196" title="All 2 branches covered.">		if (log.getWorkEntries().isEmpty()) {</span>
-<span class="fc" id="L197">			throw new InvalidTransitionException(SIGN_OFF_EMPTY, &quot;daily_log &quot; + id + &quot; has no work entries&quot;);</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">		if (log.getWorkEntries().isEmpty()) {</span>
+<span class="fc" id="L201">			throw new InvalidTransitionException(SIGN_OFF_EMPTY, &quot;daily_log &quot; + id + &quot; has no work entries&quot;);</span>
 		}
-<span class="fc" id="L199">		log.setStatus(LogStatus.SIGNED_OFF);</span>
-<span class="fc" id="L200">		log.setSignedOffBy(users.getReferenceById(currentUser.currentUserId()));</span>
-<span class="fc" id="L201">		log.setSignedOffAt(Instant.now(clock));</span>
-<span class="fc" id="L202">	}</span>
+<span class="fc" id="L203">		log.setStatus(LogStatus.SIGNED_OFF);</span>
+<span class="fc" id="L204">		log.setSignedOffBy(users.getReferenceById(currentUser.currentUserId()));</span>
+<span class="fc" id="L205">		log.setSignedOffAt(Instant.now(clock));</span>
+<span class="fc" id="L206">	}</span>
 
 	/** A log records work that happened: its date cannot be after today (in the sites' zone). */
 	private void checkDate(LocalDate logDate) {
-<span class="fc bfc" id="L206" title="All 2 branches covered.">		if (logDate.isAfter(LocalDate.now(clock))) {</span>
-<span class="fc" id="L207">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_FUTURE);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">		if (logDate.isAfter(LocalDate.now(clock))) {</span>
+<span class="fc" id="L211">			throw new InvalidFieldException(&quot;logDate&quot;, DATE_FUTURE);</span>
 		}
-<span class="fc" id="L209">	}</span>
+<span class="fc" id="L213">	}</span>
 
 	private boolean isDeletable(DailyLog log) {
-<span class="fc bfc" id="L212" title="All 2 branches covered.">		return log.getStatus() == LogStatus.DRAFT</span>
-<span class="fc bfc" id="L213" title="All 2 branches covered.">				&amp;&amp; !incidents.existsByDailyLog_Id(log.getId())</span>
-<span class="pc bpc" id="L214" title="1 of 2 branches missed.">				&amp;&amp; !reopenRequests.existsByDailyLog_Id(log.getId());</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">		return log.getStatus() == LogStatus.DRAFT</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">				&amp;&amp; !incidents.existsByDailyLog_Id(log.getId())</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">				&amp;&amp; !reopenRequests.existsByDailyLog_Id(log.getId());</span>
 	}
 
 	private DailyLogDetails toDetails(DailyLog log, boolean deletable) {
-<span class="fc bfc" id="L218" title="All 2 branches covered.">		ZonedDateTime signedOffAt = log.getSignedOffAt() == null ? null</span>
-<span class="fc" id="L219">				: log.getSignedOffAt().atZone(clock.getZone());</span>
-<span class="fc" id="L220">		return new DailyLogDetails(log.getId(), log.getSite().getId(), log.getSite().getCode(),</span>
-<span class="fc" id="L221">				log.getSite().getName(), log.getLogDate(), log.getStatus(), log.getRevision(), log.getWeather(),</span>
-<span class="fc bfc" id="L222" title="All 2 branches covered.">				log.getNotes(), log.getSignedOffBy() == null ? null : log.getSignedOffBy().getFullName(),</span>
-<span class="fc" id="L223">				signedOffAt, log.getVersion(), log.getStatus().isEditable(), deletable,</span>
-<span class="fc" id="L224">				log.getWorkEntries().stream().map(WorkEntryView::of).toList());</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">		ZonedDateTime signedOffAt = log.getSignedOffAt() == null ? null</span>
+<span class="fc" id="L223">				: log.getSignedOffAt().atZone(clock.getZone());</span>
+<span class="fc" id="L224">		return new DailyLogDetails(log.getId(), log.getSite().getId(), log.getSite().getCode(),</span>
+<span class="fc" id="L225">				log.getSite().getName(), log.getLogDate(), log.getStatus(), log.getRevision(), log.getWeather(),</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">				log.getNotes(), log.getSignedOffBy() == null ? null : log.getSignedOffBy().getFullName(),</span>
+<span class="fc" id="L227">				signedOffAt, log.getVersion(), log.getStatus().isEditable(), deletable,</span>
+<span class="fc" id="L228">				log.getWorkEntries().stream().map(WorkEntryView::of).toList());</span>
 	}
 
 }

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CsrfTokenController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.security</a> &gt; <span class="el_source">CsrfTokenController.java</span></div><h1>CsrfTokenController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.security;
+
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+/**
+ * How an API client gets the CSRF token (decision 24/11: the REST API uses the same session and
+ * the same CSRF protection as the screens, no exception in the filter chain).
+ *
+ * &lt;p&gt;The token stays in the HTTP session ({@code HttpSessionCsrfTokenRepository}, Spring
+ * Security's default) - nothing changes for the Thymeleaf forms - and this endpoint hands it
+ * out. Rejected alternative: {@code CookieCsrfTokenRepository} (an {@code XSRF-TOKEN} cookie
+ * readable by JavaScript), which would change the token storage of every screen and expose the
+ * token to any script on the page, only to save the client one GET.
+ *
+ * &lt;p&gt;Public on purpose (the client needs a token for {@code POST /login} too) and harmless: the
+ * token is bound to the caller's own session, which an attacker's page cannot read
+ * (same-origin policy), so handing it to the caller reveals nothing. Login rotates the token
+ * (session fixation protection), so a client calls this again after signing in.
+ */
+@RestController
+@Tag(name = &quot;Authentication&quot;, description = &quot;Session and CSRF token for API clients&quot;)
+<span class="fc" id="L32">public class CsrfTokenController {</span>
+
+	@GetMapping(ApiRequests.CSRF_TOKEN_PATH)
+	@SecurityRequirements
+	@Operation(summary = &quot;CSRF token of the current session&quot;, description = &quot;&quot;&quot;
+			Returns the CSRF token of the caller's session. Send it in the `X-CSRF-TOKEN` header on \
+			every POST, PUT and DELETE (and as `_csrf` form field on `POST /login`). Signing in creates \
+			a new token, so call this again after the login.&quot;&quot;&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;Token of the current session&quot;)
+	public ResponseEntity&lt;CsrfTokenResponse&gt; csrf(@Parameter(hidden = true) CsrfToken token) {
+<span class="fc" id="L42">		return ResponseEntity.ok()</span>
+<span class="fc" id="L43">			.cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L44">			.body(new CsrfTokenResponse(token.getHeaderName(), token.getParameterName(), token.getToken()));</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

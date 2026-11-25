@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CorrectiveActionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">CorrectiveActionService.java</span></div><h1>CorrectiveActionService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.audit.aspect.AuditedAction;
+import hr.algebra.sitelog.audit.domain.DomainActionType;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.InvalidTransitionException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.incident.domain.CorrectiveAction;
+import hr.algebra.sitelog.incident.domain.CorrectiveActionStatus;
+import hr.algebra.sitelog.incident.domain.Incident;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.repository.IncidentRepository;
+import hr.algebra.sitelog.user.domain.AppUser;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import hr.algebra.sitelog.user.service.UserOption;
+
+/**
+ * Corrective actions of an incident (child of the Incident aggregate).
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Who&lt;/b&gt; - the SAFETY_SUPERVISOR creates, changes, assigns and deletes them on any
+ * site; &quot;mark as done&quot; is also allowed to the action's own assignee
+ * ({@code @incidentAccess.isAssignee}).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Rules&lt;/b&gt; - not on a CLOSED incident; the due date cannot be in the past (an unchanged
+ * past date of an overdue action may stay); the assignee must be an active site manager or
+ * safety supervisor; a DONE action is final (no edit, no delete).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Status&lt;/b&gt; - OPEN -&gt; DONE (completed_at set, {@code ck_corrective_action_completed});
+ * OPEN -&gt; OVERDUE is the nightly job (M4); moving the due date of an OVERDUE action to today or
+ * later makes it OPEN again.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Concurrency&lt;/b&gt; - the incident is the aggregate root: it is loaded with
+ * {@code OPTIMISTIC_FORCE_INCREMENT}, so every change of an action bumps the incident's version
+ * and two concurrent changes conflict (409), exactly like work entries of a daily log.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+@Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
+public class CorrectiveActionService {
+
+	public static final String INCIDENT_CLOSED = &quot;correctiveAction.flash.incidentClosed&quot;;
+
+	public static final String ACTION_DONE = &quot;correctiveAction.flash.done.final&quot;;
+
+	public static final String DUE_DATE_PAST = &quot;validation.correctiveAction.dueDate.past&quot;;
+
+	public static final String ASSIGNEE_INVALID = &quot;validation.correctiveAction.assignee.invalid&quot;;
+
+	/** Roles that can be responsible for a corrective action. */
+<span class="fc" id="L61">	static final EnumSet&lt;RoleName&gt; ASSIGNEE_ROLES = EnumSet.of(RoleName.SITE_MANAGER, RoleName.SAFETY_SUPERVISOR);</span>
+
+	private final IncidentRepository incidents;
+
+	private final AppUserRepository users;
+
+	private final Clock clock;
+
+<span class="fc" id="L69">	public CorrectiveActionService(IncidentRepository incidents, AppUserRepository users, Clock clock) {</span>
+<span class="fc" id="L70">		this.incidents = incidents;</span>
+<span class="fc" id="L71">		this.users = users;</span>
+<span class="fc" id="L72">		this.clock = clock;</span>
+<span class="fc" id="L73">	}</span>
+
+	/** Header of the form: the incident and the version the form sends back. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	public IncidentHeader incidentForActions(Long incidentId) {
+<span class="fc" id="L78">		Incident incident = incidents.findDetailById(incidentId)</span>
+<span class="pc" id="L79">			.orElseThrow(() -&gt; new NotFoundException(Incident.class, incidentId));</span>
+<span class="fc" id="L80">		requireNotClosed(incident);</span>
+<span class="fc" id="L81">		return IncidentHeader.of(incident);</span>
+	}
+
+	/** One action for the edit form. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	public CorrectiveActionView get(Long incidentId, Long actionId) {
+<span class="fc" id="L87">		Incident incident = incidents.findDetailById(incidentId)</span>
+<span class="fc" id="L88">			.orElseThrow(() -&gt; new NotFoundException(Incident.class, incidentId));</span>
+<span class="fc" id="L89">		CorrectiveAction action = actionOf(incident, actionId);</span>
+<span class="fc" id="L90">		requireNotDone(action);</span>
+<span class="fc" id="L91">		return CorrectiveActionView.of(action, LocalDate.now(clock), clock.getZone());</span>
+	}
+
+	/** Active site managers and safety supervisors, by name, for the assignee select. */
+	public List&lt;UserOption&gt; assigneeOptions() {
+<span class="fc" id="L96">		return users.findByRole_NameInAndActiveTrueOrderByFullNameAsc(ASSIGNEE_ROLES).stream()</span>
+<span class="fc" id="L97">			.map(user -&gt; new UserOption(user.getId(), user.getFullName(), user.getEmail()))</span>
+<span class="fc" id="L98">			.toList();</span>
+	}
+
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	@AuditedAction(DomainActionType.CORRECTIVE_ACTION_ADDED)
+	@Transactional
+	public Long create(Long incidentId, Long incidentVersion, CorrectiveActionCommand command) {
+<span class="fc" id="L105">		Incident incident = loadForChange(incidentId, incidentVersion);</span>
+<span class="fc" id="L106">		requireFutureOrToday(command.dueDate());</span>
+<span class="fc" id="L107">		CorrectiveAction action = new CorrectiveAction(command.description().strip(), command.dueDate());</span>
+<span class="fc" id="L108">		action.setAssignee(assignee(command.assigneeId(), null));</span>
+<span class="fc" id="L109">		incident.addCorrectiveAction(action);</span>
+<span class="fc" id="L110">		incidents.flush();</span>
+<span class="fc" id="L111">		return action.getId();</span>
+	}
+
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	@AuditedAction(DomainActionType.CORRECTIVE_ACTION_UPDATED)
+	@Transactional
+	public void update(Long incidentId, Long actionId, Long incidentVersion, CorrectiveActionCommand command) {
+<span class="fc" id="L118">		Incident incident = loadForChange(incidentId, incidentVersion);</span>
+<span class="fc" id="L119">		CorrectiveAction action = actionOf(incident, actionId);</span>
+<span class="fc" id="L120">		requireNotDone(action);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">		if (!Objects.equals(action.getDueDate(), command.dueDate())) {</span>
+<span class="fc" id="L122">			requireFutureOrToday(command.dueDate());</span>
+		}
+<span class="fc" id="L124">		action.setDescription(command.description().strip());</span>
+<span class="fc" id="L125">		action.setDueDate(command.dueDate());</span>
+<span class="fc" id="L126">		action.setAssignee(assignee(command.assigneeId(), action.getAssignee()));</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">		if (action.getStatus() == CorrectiveActionStatus.OVERDUE &amp;&amp; !command.dueDate().isBefore(LocalDate.now(clock))) {</span>
+<span class="fc" id="L128">			action.setStatus(CorrectiveActionStatus.OPEN);</span>
+		}
+<span class="fc" id="L130">	}</span>
+
+	/** OPEN / OVERDUE -&gt; DONE, by a supervisor or by the assignee. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or @incidentAccess.isAssignee(#actionId)&quot;)
+	@AuditedAction(DomainActionType.CORRECTIVE_ACTION_DONE)
+	@Transactional
+	public void markDone(Long incidentId, Long actionId, Long incidentVersion) {
+<span class="fc" id="L137">		Incident incident = loadForChange(incidentId, incidentVersion);</span>
+<span class="fc" id="L138">		CorrectiveAction action = actionOf(incident, actionId);</span>
+<span class="fc" id="L139">		requireNotDone(action);</span>
+<span class="fc" id="L140">		action.setStatus(CorrectiveActionStatus.DONE);</span>
+<span class="fc" id="L141">		action.setCompletedAt(Instant.now(clock));</span>
+<span class="fc" id="L142">	}</span>
+
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR')&quot;)
+	@AuditedAction(DomainActionType.CORRECTIVE_ACTION_DELETED)
+	@Transactional
+	public void delete(Long incidentId, Long actionId, Long incidentVersion) {
+<span class="fc" id="L148">		Incident incident = loadForChange(incidentId, incidentVersion);</span>
+<span class="fc" id="L149">		CorrectiveAction action = actionOf(incident, actionId);</span>
+<span class="fc" id="L150">		requireNotDone(action);</span>
+<span class="fc" id="L151">		incident.removeCorrectiveAction(action);</span>
+<span class="fc" id="L152">	}</span>
+
+	/**
+	 * 1) registers OPTIMISTIC_FORCE_INCREMENT on the incident (version + 1 at commit even though
+	 * only a child changes); 2) the same managed instance with its actions initialised.
+	 */
+	private Incident loadForChange(Long incidentId, Long incidentVersion) {
+<span class="fc" id="L159">		Incident incident = incidents.findForChildUpdateById(incidentId)</span>
+<span class="fc" id="L160">			.orElseThrow(() -&gt; new NotFoundException(Incident.class, incidentId));</span>
+<span class="fc" id="L161">		incidents.findDetailById(incidentId);</span>
+<span class="fc" id="L162">		IncidentRules.requireVersion(incident, incidentVersion);</span>
+<span class="fc" id="L163">		requireNotClosed(incident);</span>
+<span class="fc" id="L164">		return incident;</span>
+	}
+
+	private static CorrectiveAction actionOf(Incident incident, Long actionId) {
+<span class="fc" id="L168">		return incident.getCorrectiveActions().stream()</span>
+<span class="fc" id="L169">			.filter(action -&gt; action.getId().equals(actionId))</span>
+<span class="fc" id="L170">			.findFirst()</span>
+<span class="fc" id="L171">			.orElseThrow(() -&gt; new NotFoundException(CorrectiveAction.class, actionId));</span>
+	}
+
+	private static void requireNotClosed(Incident incident) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">		if (incident.getStatus() == IncidentStatus.CLOSED) {</span>
+<span class="fc" id="L176">			throw new InvalidTransitionException(INCIDENT_CLOSED, &quot;incident &quot; + incident.getId() + &quot; is CLOSED&quot;);</span>
+		}
+<span class="fc" id="L178">	}</span>
+
+	private static void requireNotDone(CorrectiveAction action) {
+<span class="fc bfc" id="L181" title="All 2 branches covered.">		if (action.getStatus() == CorrectiveActionStatus.DONE) {</span>
+<span class="fc" id="L182">			throw new InvalidTransitionException(ACTION_DONE, &quot;corrective_action &quot; + action.getId() + &quot; is DONE&quot;);</span>
+		}
+<span class="fc" id="L184">	}</span>
+
+	private void requireFutureOrToday(LocalDate dueDate) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">		if (dueDate.isBefore(LocalDate.now(clock))) {</span>
+<span class="fc" id="L188">			throw new InvalidFieldException(&quot;dueDate&quot;, DUE_DATE_PAST);</span>
+		}
+<span class="fc" id="L190">	}</span>
+
+	/** The new assignee: must be active and in an assignee role, unless it is the unchanged current one. */
+	private AppUser assignee(Long assigneeId, AppUser current) {
+<span class="fc bfc" id="L194" title="All 2 branches covered.">		if (assigneeId == null) {</span>
+<span class="fc" id="L195">			return null;</span>
+		}
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">		if (current != null &amp;&amp; assigneeId.equals(current.getId())) {</span>
+<span class="fc" id="L198">			return current;</span>
+		}
+<span class="fc" id="L200">		return users.findWithRoleById(assigneeId)</span>
+<span class="fc bfc" id="L201" title="All 4 branches covered.">			.filter(user -&gt; user.isActive() &amp;&amp; ASSIGNEE_ROLES.contains(user.getRole().getName()))</span>
+<span class="fc" id="L202">			.orElseThrow(() -&gt; new InvalidFieldException(&quot;assigneeId&quot;, ASSIGNEE_INVALID));</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

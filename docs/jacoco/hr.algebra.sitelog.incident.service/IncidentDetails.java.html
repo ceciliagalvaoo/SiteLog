@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentDetails.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">IncidentDetails.java</span></div><h1>IncidentDetails.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.util.List;
+
+import hr.algebra.sitelog.audit.service.DomainActionView;
+import hr.algebra.sitelog.crew.service.CrewOption;
+import hr.algebra.sitelog.incident.domain.IncidentCategory;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+
+/**
+ * Incident detail page (and the data loaded into the edit form).
+ *
+ * @param missingSeverityFields for HIGH / CRITICAL: the required fields still empty
+ *                              ({@code rootCause}, {@code witnesses}, {@code medicalTreatment},
+ *                              {@code authorityNotified}); empty otherwise
+ * @param timeline              recorded workflow actions, oldest first
+ */
+<span class="fc" id="L21">public record IncidentDetails(</span>
+		Long id,
+		Long siteId,
+		String siteCode,
+		String siteName,
+		Long dailyLogId,
+		LocalDate dailyLogDate,
+		ZonedDateTime occurredAt,
+		String title,
+		String description,
+		Severity severity,
+		IncidentCategory category,
+		IncidentStatus status,
+		String rootCause,
+		String witnesses,
+		String medicalTreatment,
+		Boolean authorityNotified,
+		String reportedByName,
+		String signedOffByName,
+		ZonedDateTime signedOffAt,
+		Long version,
+		List&lt;CrewOption&gt; affectedCrews,
+		List&lt;CorrectiveActionView&gt; correctiveActions,
+		List&lt;String&gt; missingSeverityFields,
+		List&lt;DomainActionView&gt; timeline) {
+
+	/** HIGH / CRITICAL: extra fields and a SAFETY_SUPERVISOR sign-off are required (AR2). */
+	public boolean requiresSupervisorSignOff() {
+<span class="fc" id="L49">		return severity.requiresExtendedFields();</span>
+	}
+
+	/** The report can still be changed (REPORTED or UNDER_REVIEW). */
+	public boolean editable() {
+<span class="fc" id="L54">		return status.isOpen();</span>
+	}
+
+	public boolean canStartReview() {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">		return status == IncidentStatus.REPORTED;</span>
+	}
+
+	/** UNDER_REVIEW with every field the severity requires. */
+	public boolean canSignOff() {
+<span class="fc bfc" id="L63" title="All 4 branches covered.">		return status == IncidentStatus.UNDER_REVIEW &amp;&amp; missingSeverityFields.isEmpty();</span>
+	}
+
+	/** SIGNED_OFF and every corrective action DONE. */
+	public boolean canClose() {
+<span class="fc bfc" id="L68" title="All 4 branches covered.">		return status == IncidentStatus.SIGNED_OFF &amp;&amp; openActionCount() == 0;</span>
+	}
+
+	/** Only a REPORTED incident without corrective actions may be deleted. */
+	public boolean deletable() {
+<span class="fc bfc" id="L73" title="All 4 branches covered.">		return status == IncidentStatus.REPORTED &amp;&amp; correctiveActions.isEmpty();</span>
+	}
+
+	/** Corrective actions can be added and changed until the incident is CLOSED. */
+	public boolean actionsEditable() {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">		return status != IncidentStatus.CLOSED;</span>
+	}
+
+	public long openActionCount() {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">		return correctiveActions.stream().filter(action -&gt; !action.done()).count();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

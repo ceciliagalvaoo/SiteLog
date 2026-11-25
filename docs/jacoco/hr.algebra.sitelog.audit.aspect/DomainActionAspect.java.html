@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DomainActionAspect.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.audit.aspect</a> &gt; <span class="el_source">DomainActionAspect.java</span></div><h1>DomainActionAspect.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.audit.aspect;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.concurrent.TimeUnit;
+
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
+import hr.algebra.sitelog.audit.aspect.AuditedAction.IdSource;
+import hr.algebra.sitelog.audit.domain.ActionOutcome;
+import hr.algebra.sitelog.audit.service.DomainActionRecorder;
+import hr.algebra.sitelog.common.exception.DomainException;
+import hr.algebra.sitelog.user.security.AppUserPrincipal;
+
+/**
+ * The domain aspect (ADR-0003 decision 6, &quot;which action happened and by whom&quot;).
+ *
+ * &lt;p&gt;&lt;b&gt;What it intercepts:&lt;/b&gt; every Spring bean method annotated with {@link AuditedAction}
+ * (pointcut {@code @annotation(AuditedAction)}): daily log sign-off, reopen request / approval /
+ * rejection, the incident workflow (report, update, start review, sign-off, close, delete) and
+ * corrective action changes. For each call it records the action, the record id, the signed-in
+ * user, the time, the duration and the outcome (SUCCESS, REJECTED by a business rule, DENIED
+ * by {@code @PreAuthorize}, FAILED) - as one structured line in the {@code sitelog.audit} log
+ * and one row in {@code domain_action}. The exception itself is always re-thrown unchanged:
+ * the aspect observes, it never changes the result of the call.
+ *
+ * &lt;p&gt;&lt;b&gt;Order:&lt;/b&gt; {@link Ordered#HIGHEST_PRECEDENCE}, so it is the outermost advice of the
+ * service proxy - outside method security and outside the service transaction. That is why it
+ * sees refused calls (DENIED) and failures that only happen at commit (an optimistic lock
+ * conflict, a trigger), and why a SUCCESS row is written only after the business transaction
+ * committed. The row is written by {@link DomainActionRecorder} in its own transaction (or in
+ * the caller's, when an outer transaction exists, so it rolls back together with it).
+ *
+ * &lt;p&gt;Recording must never break the business call: a failure to write the row is logged and
+ * swallowed; the log line is written first, so it is never lost.
+ */
+@Aspect
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class DomainActionAspect {
+
+	/** Dedicated logger: can be routed to its own appender / log index in production. */
+<span class="fc" id="L57">	static final Logger AUDIT_LOG = LoggerFactory.getLogger(&quot;sitelog.audit&quot;);</span>
+
+<span class="fc" id="L59">	private static final Logger LOG = LoggerFactory.getLogger(DomainActionAspect.class);</span>
+
+	private final DomainActionRecorder recorder;
+
+	private final Clock clock;
+
+<span class="fc" id="L65">	public DomainActionAspect(DomainActionRecorder recorder, Clock clock) {</span>
+<span class="fc" id="L66">		this.recorder = recorder;</span>
+<span class="fc" id="L67">		this.clock = clock;</span>
+<span class="fc" id="L68">	}</span>
+
+	/**
+	 * The annotation is read from the method instead of being bound as an advice parameter
+	 * ({@code @annotation(audited)}): argument binding needs Spring's ExposeInvocationInterceptor
+	 * to run first, and this advice is deliberately the very first one in the chain.
+	 */
+	@Around(&quot;@annotation(hr.algebra.sitelog.audit.aspect.AuditedAction)&quot;)
+	public Object record(ProceedingJoinPoint joinPoint) throws Throwable {
+<span class="fc" id="L77">		AuditedAction audited = annotationOf(joinPoint);</span>
+<span class="fc" id="L78">		Instant startedAt = Instant.now(clock);</span>
+<span class="fc" id="L79">		long start = System.nanoTime();</span>
+<span class="fc" id="L80">		Actor actor = Actor.current();</span>
+		Object result;
+		try {
+<span class="fc" id="L83">			result = joinPoint.proceed();</span>
+		}
+<span class="fc" id="L85">		catch (Throwable ex) {</span>
+<span class="fc" id="L86">			write(audited, entityId(joinPoint, audited, null), actor, startedAt, start, outcomeOf(ex), detailOf(ex));</span>
+<span class="fc" id="L87">			throw ex;</span>
+<span class="fc" id="L88">		}</span>
+<span class="fc" id="L89">		write(audited, entityId(joinPoint, audited, result), actor, startedAt, start, ActionOutcome.SUCCESS, null);</span>
+<span class="fc" id="L90">		return result;</span>
+	}
+
+	private void write(AuditedAction audited, Long entityId, Actor actor, Instant startedAt, long start,
+			ActionOutcome outcome, String detail) {
+<span class="fc" id="L95">		int durationMs = (int) Math.min(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), Integer.MAX_VALUE);</span>
+<span class="fc" id="L96">		AUDIT_LOG.info(&quot;domain_action action={} entity={} id={} actor={} outcome={} durationMs={}{}&quot;, audited.value(),</span>
+<span class="fc" id="L97">				audited.value().entityType(), entityId, actor.email(), outcome, durationMs,</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">				detail == null ? &quot;&quot; : &quot; detail=&quot; + detail);</span>
+		try {
+<span class="fc" id="L100">			recorder.record(audited.value(), entityId, actor.id(), actor.email(), startedAt, outcome, durationMs,</span>
+					detail);
+		}
+<span class="fc" id="L103">		catch (RuntimeException e) {</span>
+<span class="fc" id="L104">			LOG.error(&quot;Could not store domain action {} on {} {}&quot;, audited.value(), audited.value().entityType(),</span>
+					entityId, e);
+<span class="fc" id="L106">		}</span>
+<span class="fc" id="L107">	}</span>
+
+	static AuditedAction annotationOf(ProceedingJoinPoint joinPoint) {
+<span class="fc" id="L110">		MethodSignature signature = (MethodSignature) joinPoint.getSignature();</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">		Class&lt;?&gt; targetClass = joinPoint.getTarget() == null ? signature.getDeclaringType()</span>
+<span class="fc" id="L112">				: AopUtils.getTargetClass(joinPoint.getTarget());</span>
+<span class="fc" id="L113">		AuditedAction audited = AnnotatedElementUtils.findMergedAnnotation(</span>
+<span class="fc" id="L114">				AopUtils.getMostSpecificMethod(signature.getMethod(), targetClass), AuditedAction.class);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">		return audited != null ? audited : signature.getMethod().getAnnotation(AuditedAction.class);</span>
+	}
+
+	static Long entityId(ProceedingJoinPoint joinPoint, AuditedAction audited, Object result) {
+<span class="fc bfc" id="L119" title="All 2 branches covered.">		if (audited.id() == IdSource.RETURN_VALUE) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">			return result instanceof Long id ? id : null;</span>
+		}
+<span class="fc" id="L122">		Object[] args = joinPoint.getArgs();</span>
+<span class="pc bpc" id="L123" title="2 of 4 branches missed.">		return args.length &gt; 0 &amp;&amp; args[0] instanceof Long id ? id : null;</span>
+	}
+
+	static ActionOutcome outcomeOf(Throwable ex) {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">		if (ex instanceof AccessDeniedException) {</span>
+<span class="fc" id="L128">			return ActionOutcome.DENIED;</span>
+		}
+<span class="fc bfc" id="L130" title="All 2 branches covered.">		if (ex instanceof DomainException) {</span>
+<span class="fc" id="L131">			return ActionOutcome.REJECTED;</span>
+		}
+<span class="fc" id="L133">		return ActionOutcome.FAILED;</span>
+	}
+
+	/** The message key of a business exception, otherwise only the exception class (never a message with data). */
+	static String detailOf(Throwable ex) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		return ex instanceof DomainException domain ? domain.getMessageKey() : ex.getClass().getSimpleName();</span>
+	}
+
+	/** Who is calling, read from the security context without a database query. */
+<span class="fc" id="L142">	record Actor(Long id, String email) {</span>
+
+<span class="fc" id="L144">		static final Actor SYSTEM = new Actor(null, null);</span>
+
+		static Actor current() {
+<span class="fc" id="L147">			Authentication authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L148" title="2 of 6 branches missed.">			if (authentication == null || !authentication.isAuthenticated()</span>
+					|| authentication instanceof AnonymousAuthenticationToken) {
+<span class="fc" id="L150">				return SYSTEM;</span>
+			}
+<span class="fc bfc" id="L152" title="All 2 branches covered.">			Long id = authentication.getPrincipal() instanceof AppUserPrincipal principal ? principal.getId() : null;</span>
+<span class="fc" id="L153">			return new Actor(id, authentication.getName());</span>
+		}
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

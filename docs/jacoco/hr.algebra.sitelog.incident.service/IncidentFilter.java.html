@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">IncidentFilter.java</span></div><h1>IncidentFilter.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+
+/** Optional filters of the incident list; null = no filter. */
+<span class="fc" id="L7">public record IncidentFilter(Long siteId, IncidentStatus status, Severity severity) {</span>
+
+<span class="fc" id="L9">	public static final IncidentFilter NONE = new IncidentFilter(null, null, null);</span>
+
+	public static IncidentFilter forSite(Long siteId) {
+<span class="fc" id="L12">		return new IncidentFilter(siteId, null, null);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

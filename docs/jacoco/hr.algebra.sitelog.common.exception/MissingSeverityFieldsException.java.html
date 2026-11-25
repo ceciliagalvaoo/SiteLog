@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MissingSeverityFieldsException.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.common.exception</a> &gt; <span class="el_source">MissingSeverityFieldsException.java</span></div><h1>MissingSeverityFieldsException.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.common.exception;
+
+import java.util.List;
+
+/**
+ * AR2: a HIGH or CRITICAL incident lacks fields its severity requires (root cause, witnesses,
+ * medical treatment, authority notified). HTTP 422 in the API; on screens each field becomes a
+ * field error ({@code validation.incident.&lt;field&gt;.required}) or, for a workflow button, an error
+ * flash. {@code ck_incident_severity_fields} (V3) is the database safety net for the same rule.
+ */
+public class MissingSeverityFieldsException extends DomainException {
+
+	public static final String MESSAGE_KEY = &quot;incident.flash.missingFields&quot;;
+
+	private final transient List&lt;String&gt; fields;
+
+	public MissingSeverityFieldsException(Long incidentId, List&lt;String&gt; fields) {
+<span class="fc" id="L18">		super(MESSAGE_KEY, &quot;incident &quot; + incidentId + &quot; is missing &quot; + fields);</span>
+<span class="fc" id="L19">		this.fields = List.copyOf(fields);</span>
+<span class="fc" id="L20">	}</span>
+
+	/** Property names of the missing fields, in form order. */
+	public List&lt;String&gt; getFields() {
+<span class="fc" id="L24">		return fields;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

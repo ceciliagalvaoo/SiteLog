@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RevisionResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.reopen</a> &gt; <span class="el_source">RevisionResponse.java</span></div><h1>RevisionResponse.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.reopen;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+
+import hr.algebra.sitelog.dailylog.service.EntityChange;
+import hr.algebra.sitelog.dailylog.service.FieldChange;
+import hr.algebra.sitelog.dailylog.service.RevisionView;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/**
+ * One Envers revision (one committed transaction) that touched the daily log or its children,
+ * with the before / after value of every changed field.
+ */
+@Schema(description = &quot;Envers revision of a daily log aggregate&quot;)
+<span class="fc" id="L16">public record RevisionResponse(</span>
+		@Schema(description = &quot;Envers revision number (revinfo)&quot;) Long revision,
+		OffsetDateTime changedAt,
+		@Schema(description = &quot;E-mail of the user, or 'system'&quot;) String username,
+		@Schema(nullable = true) String userName,
+		List&lt;Change&gt; changes) {
+
+	/** What the revision did to one row of the aggregate. */
+<span class="fc" id="L24">	public record Change(</span>
+			@Schema(description = &quot;DAILY_LOG, WORK_ENTRY or CREW_ASSIGNMENT&quot;) String entity,
+			Long entityId,
+			@Schema(description = &quot;ADDED, MODIFIED or DELETED&quot;) String changeType,
+			@Schema(nullable = true, description = &quot;Work entry description or crew name; null for the log itself&quot;) String label,
+			List&lt;Field&gt; fields) {
+
+		static Change of(EntityChange change) {
+<span class="fc" id="L32">			return new Change(change.entity(), change.entityId(), change.changeType(), change.label(),</span>
+<span class="fc" id="L33">					change.fields().stream().map(Field::of).toList());</span>
+		}
+
+	}
+
+	/**
+	 * One changed field. {@code field} is the message key of its label (the screen translates it);
+	 * for an enum value {@code valueKeyPrefix} is set (e.g. {@code weather.}).
+	 */
+<span class="fc" id="L42">	public record Field(</span>
+			@Schema(example = &quot;dailyLog.field.weather&quot;) String field,
+			@Schema(nullable = true, example = &quot;SUNNY&quot;) Object before,
+			@Schema(nullable = true, example = &quot;RAIN&quot;) Object after,
+			@Schema(nullable = true, example = &quot;weather.&quot;) String valueKeyPrefix) {
+
+		static Field of(FieldChange change) {
+<span class="fc" id="L49">			return new Field(change.labelKey(), change.before(), change.after(), change.valueKeyPrefix());</span>
+		}
+
+	}
+
+	static RevisionResponse of(RevisionView revision) {
+<span class="fc" id="L55">		return new RevisionResponse(revision.revision(), revision.changedAt().toOffsetDateTime(), revision.username(),</span>
+<span class="fc" id="L56">				revision.userName(), revision.changes().stream().map(Change::of).toList());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

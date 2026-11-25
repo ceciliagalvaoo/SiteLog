@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DomainActionType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.audit.domain</a> &gt; <span class="el_source">DomainActionType.java</span></div><h1>DomainActionType.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.audit.domain;
+
+/**
+ * The domain actions recorded by the {@code @AuditedAction} aspect, each tied to the kind of
+ * record it changes. Values match {@code ck_domain_action_action} in V7. Corrective action
+ * changes are recorded on their incident, so they appear in the incident's timeline.
+ */
+<span class="fc" id="L8">public enum DomainActionType {</span>
+
+<span class="fc" id="L10">	LOG_SIGNED_OFF(AuditedEntityType.DAILY_LOG),</span>
+<span class="fc" id="L11">	LOG_REOPEN_REQUESTED(AuditedEntityType.DAILY_LOG),</span>
+<span class="fc" id="L12">	LOG_REOPEN_APPROVED(AuditedEntityType.DAILY_LOG),</span>
+<span class="fc" id="L13">	LOG_REOPEN_REJECTED(AuditedEntityType.DAILY_LOG),</span>
+
+<span class="fc" id="L15">	INCIDENT_REPORTED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L16">	INCIDENT_UPDATED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L17">	INCIDENT_REVIEW_STARTED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L18">	INCIDENT_SIGNED_OFF(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L19">	INCIDENT_CLOSED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L20">	INCIDENT_DELETED(AuditedEntityType.INCIDENT),</span>
+
+<span class="fc" id="L22">	CORRECTIVE_ACTION_ADDED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L23">	CORRECTIVE_ACTION_UPDATED(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L24">	CORRECTIVE_ACTION_DONE(AuditedEntityType.INCIDENT),</span>
+<span class="fc" id="L25">	CORRECTIVE_ACTION_DELETED(AuditedEntityType.INCIDENT);</span>
+
+	private final AuditedEntityType entityType;
+
+<span class="fc" id="L29">	DomainActionType(AuditedEntityType entityType) {</span>
+<span class="fc" id="L30">		this.entityType = entityType;</span>
+<span class="fc" id="L31">	}</span>
+
+	public AuditedEntityType entityType() {
+<span class="fc" id="L34">		return entityType;</span>
+	}
+
+	/** Message key of the timeline label, {@code audit.action.&lt;NAME&gt;}. */
+	public String messageKey() {
+<span class="fc" id="L39">		return &quot;audit.action.&quot; + name();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CrewAssignmentApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">CrewAssignmentApiController.java</span></div><h1>CrewAssignmentApiController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.net.URI;
+import java.util.List;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import hr.algebra.sitelog.api.docs.ApiDocs;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.dailylog.service.CrewAssignmentService;
+import hr.algebra.sitelog.dailylog.service.CrewAssignmentView;
+import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.WorkEntryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+/**
+ * {@code /api/v1/daily-logs/{logId}/work-entries/{entryId}/crew-assignments}: the crew rows of a
+ * work entry ({@code CrewAssignment}, the association WorkEntry *-* Crew with hours, workers and
+ * task). Same write rules as the work entries ({@code logVersion}, lock after sign-off).
+ *
+ * &lt;p&gt;The URL names the work entry; {@link #requireInEntry} answers 404 when a row id belongs to
+ * another entry of the same log, so a URL never addresses a row that is not under it.
+ */
+@RestController
+@RequestMapping(&quot;/api/v1/daily-logs/{logId}/work-entries/{entryId}/crew-assignments&quot;)
+@Tag(name = &quot;Crew assignments&quot;, description = &quot;Crew rows of a work entry. Writing: the SITE_MANAGER of the log's site, while the log is not signed off.&quot;)
+public class CrewAssignmentApiController {
+
+	private final CrewAssignmentService crewAssignmentService;
+
+	private final WorkEntryService workEntryService;
+
+	private final DailyLogService dailyLogService;
+
+	public CrewAssignmentApiController(CrewAssignmentService crewAssignmentService, WorkEntryService workEntryService,
+<span class="fc" id="L53">			DailyLogService dailyLogService) {</span>
+<span class="fc" id="L54">		this.crewAssignmentService = crewAssignmentService;</span>
+<span class="fc" id="L55">		this.workEntryService = workEntryService;</span>
+<span class="fc" id="L56">		this.dailyLogService = dailyLogService;</span>
+<span class="fc" id="L57">	}</span>
+
+	@GetMapping
+	@Operation(summary = &quot;List the crew rows of a work entry&quot;, description = &quot;Bounded part of the aggregate, not paged.&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The crew rows&quot;)
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such work entry in this log&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public List&lt;CrewAssignmentResponse&gt; list(@PathVariable Long logId, @PathVariable Long entryId) {
+<span class="fc" id="L65">		Long logVersion = dailyLogService.getHeader(logId).version();</span>
+<span class="fc" id="L66">		return workEntryService.get(logId, entryId).crewAssignments().stream()</span>
+<span class="fc" id="L67">			.map(row -&gt; CrewAssignmentResponse.of(row, logVersion))</span>
+<span class="fc" id="L68">			.toList();</span>
+	}
+
+	@GetMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Get a crew row&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The crew row&quot;)
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such row under this work entry&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	public CrewAssignmentResponse get(@PathVariable Long logId, @PathVariable Long entryId, @PathVariable Long id) {
+<span class="nc" id="L77">		requireInEntry(logId, entryId, id);</span>
+<span class="nc" id="L78">		return response(logId, id);</span>
+	}
+
+	@PostMapping
+	@Operation(summary = &quot;Add a crew row&quot;, description = &quot;The crew must be active and not yet on this work entry.&quot;)
+	@ApiResponse(responseCode = &quot;201&quot;, description = &quot;Created; Location points to the new row&quot;,
+			headers = @Header(name = &quot;Location&quot;, description = &quot;URL of the new crew row&quot;))
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of the log's site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such work entry in this log&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale logVersion, or the log is signed off&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_LOCKED)))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Inactive crew, or crew already on this entry&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_CREW)))
+	public ResponseEntity&lt;CrewAssignmentResponse&gt; create(@PathVariable Long logId, @PathVariable Long entryId,
+			@Validated @RequestBody CrewAssignmentWriteRequest request) {
+<span class="fc" id="L97">		Long id = crewAssignmentService.create(logId, entryId, request.logVersion(), request.toCommand());</span>
+<span class="fc" id="L98">		URI location = ServletUriComponentsBuilder.fromCurrentContextPath()</span>
+<span class="fc" id="L99">			.path(&quot;/api/v1/daily-logs/{logId}/work-entries/{entryId}/crew-assignments/{id}&quot;)</span>
+<span class="fc" id="L100">			.buildAndExpand(logId, entryId, id)</span>
+<span class="fc" id="L101">			.toUri();</span>
+<span class="fc" id="L102">		return ResponseEntity.created(location).body(response(logId, id));</span>
+	}
+
+	@PutMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Replace a crew row&quot;)
+	@ApiResponse(responseCode = &quot;200&quot;, description = &quot;The updated crew row&quot;)
+	@ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid fields&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.BAD_REQUEST)))
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of the log's site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such row under this work entry&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale logVersion, or the log is signed off&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_LOCKED)))
+	@ApiResponse(responseCode = &quot;422&quot;, description = &quot;Inactive crew, or crew already on this entry&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.UNPROCESSABLE_CREW)))
+	public CrewAssignmentResponse update(@PathVariable Long logId, @PathVariable Long entryId, @PathVariable Long id,
+			@Validated @RequestBody CrewAssignmentWriteRequest request) {
+<span class="fc" id="L120">		requireInEntry(logId, entryId, id);</span>
+<span class="fc" id="L121">		crewAssignmentService.update(logId, id, request.logVersion(), request.toCommand());</span>
+<span class="fc" id="L122">		return response(logId, id);</span>
+	}
+
+	@DeleteMapping(&quot;/{id}&quot;)
+	@Operation(summary = &quot;Delete a crew row&quot;)
+	@ApiResponse(responseCode = &quot;204&quot;, description = &quot;Deleted&quot;)
+	@ApiResponse(responseCode = &quot;403&quot;, description = &quot;Not the site manager of the log's site&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.FORBIDDEN)))
+	@ApiResponse(responseCode = &quot;404&quot;, description = &quot;No such row under this work entry&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.NOT_FOUND)))
+	@ApiResponse(responseCode = &quot;409&quot;, description = &quot;Stale logVersion, or the log is signed off&quot;,
+			content = @Content(mediaType = ApiDocs.PROBLEM_JSON, examples = @ExampleObject(value = ApiDocs.CONFLICT_LOCKED)))
+	public ResponseEntity&lt;Void&gt; delete(@PathVariable Long logId, @PathVariable Long entryId, @PathVariable Long id,
+			@Parameter(description = &quot;Version of the daily log the client last read&quot;, required = true)
+			@RequestParam Long logVersion) {
+<span class="fc" id="L137">		requireInEntry(logId, entryId, id);</span>
+<span class="fc" id="L138">		crewAssignmentService.delete(logId, id, logVersion);</span>
+<span class="fc" id="L139">		return ResponseEntity.noContent().build();</span>
+	}
+
+	/** The row plus the log's current version (incremented by the change just committed). */
+	private CrewAssignmentResponse response(Long logId, Long id) {
+<span class="fc" id="L144">		return CrewAssignmentResponse.of(crewAssignmentService.get(logId, id), dailyLogService.getHeader(logId).version());</span>
+	}
+
+	/**
+	 * URL consistency, not a business rule: the services address a row by log and row id; the
+	 * entry in the URL must be the row's own entry, otherwise the resource does not exist here.
+	 */
+	private void requireInEntry(Long logId, Long entryId, Long id) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		if (!entryId.equals(crewAssignmentService.workEntryIdOf(logId, id))) {</span>
+<span class="fc" id="L153">			throw new NotFoundException(CrewAssignmentView.class, id);</span>
+		}
+<span class="fc" id="L155">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

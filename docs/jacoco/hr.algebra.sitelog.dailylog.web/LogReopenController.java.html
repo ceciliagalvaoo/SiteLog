@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogReopenController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.dailylog.web</a> &gt; <span class="el_source">LogReopenController.java</span></div><h1>LogReopenController.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.dailylog.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.web.Flash;
+import hr.algebra.sitelog.dailylog.service.DailyLogHistory;
+import hr.algebra.sitelog.dailylog.service.DailyLogHistoryService;
+import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.LogReopenService;
+
+/**
+ * AR1 reopen screens: the &quot;request reopen&quot; modal of the site manager and the approve / reject
+ * modals of the safety supervisor on the daily log detail, the supervisor's queue of pending
+ * requests, and the log's revision history (Envers before/after + reopen requests + actions).
+ *
+ * &lt;p&gt;A modal with validation errors (empty reason) re-renders the log detail with that modal
+ * open ({@code reopenModal} / {@code rejectModal} = true) instead of redirecting, so the errors
+ * stay next to the field; every successful POST redirects with a flash (PRG).
+ */
+@Controller
+public class LogReopenController {
+
+	static final String QUEUE_VIEW = &quot;dailylog/reopen-requests&quot;;
+
+	static final String HISTORY_VIEW = &quot;dailylog/history&quot;;
+
+	private final LogReopenService reopenService;
+
+	private final DailyLogService dailyLogService;
+
+	private final DailyLogHistoryService historyService;
+
+	public LogReopenController(LogReopenService reopenService, DailyLogService dailyLogService,
+<span class="fc" id="L44">			DailyLogHistoryService historyService) {</span>
+<span class="fc" id="L45">		this.reopenService = reopenService;</span>
+<span class="fc" id="L46">		this.dailyLogService = dailyLogService;</span>
+<span class="fc" id="L47">		this.historyService = historyService;</span>
+<span class="fc" id="L48">	}</span>
+
+	@PostMapping(&quot;/daily-logs/{id}/reopen-requests&quot;)
+	public String request(@PathVariable Long id,
+			@Validated @ModelAttribute(DailyLogController.REOPEN_FORM) ReopenRequestForm form, BindingResult result,
+			Model model, RedirectAttributes redirect) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L56">				reopenService.request(id, form.getVersion(), form.getReason());</span>
+<span class="fc" id="L57">				Flash.success(redirect, &quot;reopen.flash.requested&quot;);</span>
+<span class="fc" id="L58">				return &quot;redirect:/daily-logs/&quot; + id;</span>
+			}
+<span class="fc" id="L60">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L61">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L64">		model.addAttribute(&quot;reopenModal&quot;, true);</span>
+<span class="fc" id="L65">		return DailyLogController.detail(model, dailyLogService, reopenService, id);</span>
+	}
+
+	@PostMapping(&quot;/daily-logs/{id}/reopen-requests/{requestId}/approve&quot;)
+	public String approve(@PathVariable Long id, @PathVariable Long requestId,
+			@RequestParam(name = &quot;note&quot;, required = false) String note, RedirectAttributes redirect) {
+<span class="fc" id="L71">		reopenService.approve(id, requestId, note);</span>
+<span class="fc" id="L72">		Flash.success(redirect, &quot;reopen.flash.approved&quot;);</span>
+<span class="fc" id="L73">		return &quot;redirect:/daily-logs/&quot; + id;</span>
+	}
+
+	@PostMapping(&quot;/daily-logs/{id}/reopen-requests/{requestId}/reject&quot;)
+	public String reject(@PathVariable Long id, @PathVariable Long requestId,
+			@Validated @ModelAttribute(DailyLogController.REJECT_FORM) ReopenRejectForm form, BindingResult result,
+			Model model, RedirectAttributes redirect) {
+<span class="fc bfc" id="L80" title="All 2 branches covered.">		if (!result.hasErrors()) {</span>
+			try {
+<span class="fc" id="L82">				reopenService.reject(id, requestId, form.getReason());</span>
+<span class="fc" id="L83">				Flash.success(redirect, &quot;reopen.flash.rejected&quot;);</span>
+<span class="fc" id="L84">				return &quot;redirect:/daily-logs/&quot; + id;</span>
+			}
+<span class="fc" id="L86">			catch (InvalidFieldException e) {</span>
+<span class="fc" id="L87">				result.rejectValue(e.getField(), e.getMessageKey());</span>
+			}
+		}
+<span class="fc" id="L90">		model.addAttribute(&quot;rejectModal&quot;, true);</span>
+<span class="fc" id="L91">		return DailyLogController.detail(model, dailyLogService, reopenService, id);</span>
+	}
+
+	/** Pending reopen requests on all sites, oldest first (the supervisor's work queue). */
+	@GetMapping(&quot;/reopen-requests&quot;)
+	public String queue(Model model) {
+<span class="fc" id="L97">		model.addAttribute(&quot;requests&quot;, reopenService.pendingRequests());</span>
+<span class="fc" id="L98">		return QUEUE_VIEW;</span>
+	}
+
+	/** Revision history of a log: who changed what, before and after, and why it was reopened. */
+	@GetMapping(&quot;/daily-logs/{id}/history&quot;)
+	public String history(@PathVariable Long id, Model model) {
+<span class="fc" id="L104">		DailyLogHistory history = historyService.history(id);</span>
+<span class="fc" id="L105">		model.addAttribute(&quot;history&quot;, history);</span>
+<span class="fc" id="L106">		model.addAttribute(&quot;contextTitle&quot;, history.log().siteName());</span>
+<span class="fc" id="L107">		return HISTORY_VIEW;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

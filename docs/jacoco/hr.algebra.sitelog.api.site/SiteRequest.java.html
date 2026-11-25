@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SiteRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.site</a> &gt; <span class="el_source">SiteRequest.java</span></div><h1>SiteRequest.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.site;
+
+import java.time.LocalDate;
+
+import hr.algebra.sitelog.common.validation.Chronological;
+import hr.algebra.sitelog.site.service.SiteCommand;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/**
+ * Body of {@code POST /api/v1/sites} and {@code PUT /api/v1/sites/{id}}. Same constraints and
+ * message keys as the site form ({@code SiteForm}), so the API and the screen report the same
+ * errors in the same language.
+ */
+@Chronological(before = &quot;startDate&quot;, after = &quot;endDate&quot;, message = &quot;{validation.site.endDate.beforeStart}&quot;)
+@Schema(description = &quot;Site to create or replace&quot;)
+<span class="fc" id="L19">public record SiteRequest(</span>
+		@NotBlank(message = &quot;{validation.site.code.required}&quot;)
+		@Size(max = 20, message = &quot;{validation.size.max}&quot;)
+		@Schema(description = &quot;Unique code (stored upper-case)&quot;, example = &quot;ZG-04&quot;, maxLength = 20)
+		String code,
+
+		@NotBlank(message = &quot;{validation.site.name.required}&quot;)
+		@Size(max = 150, message = &quot;{validation.size.max}&quot;)
+		@Schema(example = &quot;Residential block Lanište&quot;, maxLength = 150)
+		String name,
+
+		@NotBlank(message = &quot;{validation.site.address.required}&quot;)
+		@Size(max = 255, message = &quot;{validation.size.max}&quot;)
+		@Schema(example = &quot;Ulica Damira Tomljanovića 12, Zagreb&quot;, maxLength = 255)
+		String address,
+
+		@Size(max = 1000, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, maxLength = 1000)
+		String description,
+
+		@NotNull(message = &quot;{validation.site.startDate.required}&quot;)
+		@Schema(example = &quot;2026-03-01&quot;)
+		LocalDate startDate,
+
+		@Schema(description = &quot;Set it to finish the site (not before startDate)&quot;, nullable = true, example = &quot;2027-06-30&quot;)
+		LocalDate endDate,
+
+		@NotNull(message = &quot;{validation.site.manager.required}&quot;)
+		@Schema(description = &quot;Id of an active user with the SITE_MANAGER role&quot;, example = &quot;2&quot;)
+		Long managerId) {
+
+	SiteCommand toCommand() {
+<span class="fc" id="L51">		return new SiteCommand(code, name, address, description, startDate, endDate, managerId);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

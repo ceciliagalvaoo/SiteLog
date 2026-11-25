@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentRequest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.incident</a> &gt; <span class="el_source">IncidentRequest.java</span></div><h1>IncidentRequest.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.incident;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+
+import hr.algebra.sitelog.incident.domain.IncidentCategory;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.service.IncidentCommand;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/**
+ * Body of {@code POST /api/v1/sites/{siteId}/incidents}.
+ *
+ * &lt;p&gt;The four AR2 fields ({@code rootCause}, {@code witnesses}, {@code medicalTreatment},
+ * {@code authorityNotified}) have no {@code @NotBlank} here on purpose: whether they are required
+ * depends on the severity, a business rule of {@code IncidentService}. A HIGH / CRITICAL report
+ * without them is a well-formed request refused by that rule: 422 with the missing fields in
+ * {@code errors}, not a 400.
+ */
+@Schema(description = &quot;Incident to report on a site&quot;)
+<span class="fc" id="L24">public record IncidentRequest(</span>
+		@NotNull(message = &quot;{validation.incident.occurredAt.required}&quot;)
+		@Schema(description = &quot;When it happened, with its UTC offset; not in the future&quot;, example = &quot;2026-11-24T09:30:00+01:00&quot;)
+		OffsetDateTime occurredAt,
+
+		@NotBlank(message = &quot;{validation.incident.title.required}&quot;)
+		@Size(max = 200, message = &quot;{validation.size.max}&quot;)
+		@Schema(example = &quot;Worker slipped on wet formwork&quot;)
+		String title,
+
+		@NotBlank(message = &quot;{validation.incident.description.required}&quot;)
+		@Size(max = 5000, message = &quot;{validation.size.max}&quot;)
+		String description,
+
+		@NotNull(message = &quot;{validation.incident.severity.required}&quot;)
+		@Schema(description = &quot;HIGH and CRITICAL need the four extra fields and a safety supervisor sign-off&quot;, example = &quot;HIGH&quot;)
+		Severity severity,
+
+		@NotNull(message = &quot;{validation.incident.category.required}&quot;)
+		@Schema(example = &quot;SLIP_TRIP&quot;)
+		IncidentCategory category,
+
+		@Schema(nullable = true, description = &quot;Optional daily log of the same site&quot;)
+		Long dailyLogId,
+
+		@Schema(nullable = true, description = &quot;Active crews involved&quot;)
+		List&lt;@NotNull Long&gt; affectedCrewIds,
+
+		@Size(max = 5000, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, description = &quot;Required for HIGH / CRITICAL&quot;)
+		String rootCause,
+
+		@Size(max = 2000, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, description = &quot;Required for HIGH / CRITICAL (\&quot;None\&quot; if nobody saw it)&quot;)
+		String witnesses,
+
+		@Size(max = 2000, message = &quot;{validation.size.max}&quot;)
+		@Schema(nullable = true, description = &quot;Required for HIGH / CRITICAL (\&quot;None\&quot; if not needed)&quot;)
+		String medicalTreatment,
+
+		@Schema(nullable = true, description = &quot;Required for HIGH / CRITICAL&quot;)
+		Boolean authorityNotified) {
+
+	IncidentCommand toCommand() {
+<span class="fc" id="L68">		return IncidentRequests.command(occurredAt, title, description, severity, category, dailyLogId,</span>
+				affectedCrewIds, rootCause, witnesses, medicalTreatment, authorityNotified);
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

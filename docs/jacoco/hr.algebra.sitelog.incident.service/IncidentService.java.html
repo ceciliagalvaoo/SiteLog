@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">IncidentService.java</span></div><h1>IncidentService.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import hr.algebra.sitelog.audit.aspect.AuditedAction;
+import hr.algebra.sitelog.audit.aspect.AuditedAction.IdSource;
+import hr.algebra.sitelog.audit.domain.AuditedEntityType;
+import hr.algebra.sitelog.audit.domain.DomainActionType;
+import hr.algebra.sitelog.audit.service.DomainActionService;
+import hr.algebra.sitelog.audit.service.DomainActionView;
+import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
+import hr.algebra.sitelog.common.exception.InvalidFieldException;
+import hr.algebra.sitelog.common.exception.InvalidTransitionException;
+import hr.algebra.sitelog.common.exception.MissingSeverityFieldsException;
+import hr.algebra.sitelog.common.exception.NotFoundException;
+import hr.algebra.sitelog.crew.domain.Crew;
+import hr.algebra.sitelog.crew.repository.CrewRepository;
+import hr.algebra.sitelog.crew.service.CrewOption;
+import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.dailylog.repository.DailyLogRepository;
+import hr.algebra.sitelog.incident.domain.CorrectiveActionStatus;
+import hr.algebra.sitelog.incident.domain.Incident;
+import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.repository.IncidentRepository;
+import hr.algebra.sitelog.notification.domain.NotificationType;
+import hr.algebra.sitelog.notification.service.NotificationPublisher;
+import hr.algebra.sitelog.site.domain.Site;
+import hr.algebra.sitelog.site.repository.SiteRepository;
+import hr.algebra.sitelog.user.domain.RoleName;
+import hr.algebra.sitelog.user.repository.AppUserRepository;
+import hr.algebra.sitelog.user.service.CurrentUserProvider;
+
+/**
+ * Incidents and the AR2 severity workflow:
+ * {@code REPORTED -&gt; UNDER_REVIEW -&gt; SIGNED_OFF -&gt; CLOSED}.
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;&lt;b&gt;Report&lt;/b&gt; - the SITE_MANAGER of the site ({@code @siteAccess}); optional link to a
+ * daily log of the same site; affected crews must be active. A HIGH / CRITICAL report notifies
+ * every active safety supervisor (HIGH_SEVERITY_INCIDENT).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Required fields by severity&lt;/b&gt; - HIGH / CRITICAL need root cause, witnesses, medical
+ * treatment and authority notified, checked on report, on every change and again at sign-off
+ * ({@link MissingSeverityFieldsException}, 422). The form checks the same with a validation
+ * group (UX); this service is the rule for every caller; {@code ck_incident_severity_fields}
+ * is the database safety net.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Who handles it&lt;/b&gt; - start review, sign-off and close: the SAFETY_SUPERVISOR on any
+ * site; the site manager only for LOW / MEDIUM incidents of his or her own site
+ * ({@code @incidentAccess.isLowSeverityOnOwnSite}). So a HIGH / CRITICAL incident is always
+ * signed off by a supervisor before it can be closed. Only a supervisor may lower a HIGH /
+ * CRITICAL severity (otherwise a manager could downgrade and sign it himself).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Edit&lt;/b&gt; - while REPORTED or UNDER_REVIEW; a site manager only while REPORTED (once
+ * the review started, the supervisor owns the record).&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Close&lt;/b&gt; - only when every corrective action is DONE.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Delete&lt;/b&gt; - only a REPORTED incident without corrective actions, by its site's manager.&lt;/li&gt;
+ * &lt;li&gt;&lt;b&gt;Concurrency&lt;/b&gt; - every change sends the version shown on the page; a stale one or a
+ * concurrent commit ({@code @Version}) is a 409.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * Every workflow method is an {@code @AuditedAction}; the detail page shows them as timeline.
+ */
+@Service
+@Transactional(readOnly = true)
+@PreAuthorize(&quot;isAuthenticated()&quot;)
+public class IncidentService {
+
+	public static final String NOT_EDITABLE = &quot;incident.flash.notEditable&quot;;
+
+	public static final String UNDER_REVIEW_BY_SUPERVISOR = &quot;incident.flash.underReview&quot;;
+
+	public static final String REVIEW_NOT_REPORTED = &quot;incident.flash.review.notReported&quot;;
+
+	public static final String SIGN_OFF_NOT_UNDER_REVIEW = &quot;incident.flash.signOff.notUnderReview&quot;;
+
+	public static final String CLOSE_NOT_SIGNED_OFF = &quot;incident.flash.close.notSignedOff&quot;;
+
+	public static final String CLOSE_OPEN_ACTIONS = &quot;incident.flash.close.openActions&quot;;
+
+	public static final String DELETE_BLOCKED = &quot;incident.flash.deleteBlocked&quot;;
+
+	public static final String OCCURRED_FUTURE = &quot;validation.incident.occurredAt.future&quot;;
+
+	public static final String DAILY_LOG_INVALID = &quot;validation.incident.dailyLog.invalid&quot;;
+
+	public static final String CREWS_INVALID = &quot;validation.incident.crews.invalid&quot;;
+
+	public static final String SEVERITY_DOWNGRADE = &quot;validation.incident.severity.downgrade&quot;;
+
+<span class="fc" id="L107">	private static final EnumSet&lt;CorrectiveActionStatus&gt; OPEN_ACTIONS = EnumSet.of(CorrectiveActionStatus.OPEN,</span>
+			CorrectiveActionStatus.OVERDUE);
+
+	private final IncidentRepository incidents;
+
+	private final SiteRepository sites;
+
+	private final DailyLogRepository dailyLogs;
+
+	private final CrewRepository crews;
+
+	private final AppUserRepository users;
+
+	private final CurrentUserProvider currentUser;
+
+	private final NotificationPublisher notifications;
+
+	private final DomainActionService domainActions;
+
+	private final Clock clock;
+
+	public IncidentService(IncidentRepository incidents, SiteRepository sites, DailyLogRepository dailyLogs,
+			CrewRepository crews, AppUserRepository users, CurrentUserProvider currentUser,
+<span class="fc" id="L130">			NotificationPublisher notifications, DomainActionService domainActions, Clock clock) {</span>
+<span class="fc" id="L131">		this.incidents = incidents;</span>
+<span class="fc" id="L132">		this.sites = sites;</span>
+<span class="fc" id="L133">		this.dailyLogs = dailyLogs;</span>
+<span class="fc" id="L134">		this.crews = crews;</span>
+<span class="fc" id="L135">		this.users = users;</span>
+<span class="fc" id="L136">		this.currentUser = currentUser;</span>
+<span class="fc" id="L137">		this.notifications = notifications;</span>
+<span class="fc" id="L138">		this.domainActions = domainActions;</span>
+<span class="fc" id="L139">		this.clock = clock;</span>
+<span class="fc" id="L140">	}</span>
+
+	// ------------------------------------------------------------------ reads (every signed-in user)
+
+	/** Incident list with optional site / status / severity filters, one query plus the count. */
+	public Page&lt;IncidentListItem&gt; list(IncidentFilter filter, Pageable pageable) {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">		return incidents.findAll(specification(filter == null ? IncidentFilter.NONE : filter), pageable)</span>
+<span class="fc" id="L147">			.map(incident -&gt; IncidentListItem.of(incident, clock.getZone()));</span>
+	}
+
+	/** Detail: the whole incident in one SQL statement, plus its timeline (two small queries). */
+	public IncidentDetails getDetail(Long id) {
+<span class="fc" id="L152">		return toDetails(load(id));</span>
+	}
+
+	/** Same data as the detail for the edit form; refused when the caller may not edit it now. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isOnOwnSite(#id))&quot;)
+	public IncidentDetails getForEdit(Long id) {
+<span class="fc" id="L158">		Incident incident = load(id);</span>
+<span class="fc" id="L159">		requireEditableByCaller(incident);</span>
+<span class="fc" id="L160">		return toDetails(incident);</span>
+	}
+
+	/**
+	 * Daily logs of the site that a new report can be linked to, newest first. Also the access
+	 * check of the &quot;report incident&quot; form: only the site's own manager gets it.
+	 */
+	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)&quot;)
+	public List&lt;DailyLogOption&gt; dailyLogOptionsForReport(Long siteId) {
+<span class="fc bfc" id="L169" title="All 2 branches covered.">		if (!sites.existsById(siteId)) {</span>
+<span class="fc" id="L170">			throw new NotFoundException(Site.class, siteId);</span>
+		}
+<span class="fc" id="L172">		return dailyLogOptions(siteId);</span>
+	}
+
+	/** Daily logs of the site for the edit form (any caller allowed to edit). */
+	public List&lt;DailyLogOption&gt; dailyLogOptions(Long siteId) {
+<span class="fc" id="L177">		return dailyLogs.findTop60BySite_IdOrderByLogDateDesc(siteId).stream()</span>
+<span class="fc" id="L178">			.map(log -&gt; new DailyLogOption(log.getId(), log.getLogDate(), log.getStatus()))</span>
+<span class="fc" id="L179">			.toList();</span>
+	}
+
+	// ------------------------------------------------------------------ writes
+
+	/** Reports an incident on the manager's own site; returns its id. */
+	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @siteAccess.canManageSite(#siteId)&quot;)
+	@AuditedAction(value = DomainActionType.INCIDENT_REPORTED, id = IdSource.RETURN_VALUE)
+	@Transactional
+	public Long report(Long siteId, IncidentCommand command) {
+<span class="fc" id="L189">		Site site = sites.findById(siteId).orElseThrow(() -&gt; new NotFoundException(Site.class, siteId));</span>
+<span class="fc" id="L190">		Incident incident = new Incident(site, command.occurredAt(), command.title(), command.description(),</span>
+<span class="fc" id="L191">				command.severity(), command.category(), users.getReferenceById(currentUser.currentUserId()));</span>
+<span class="fc" id="L192">		apply(incident, command);</span>
+<span class="fc" id="L193">		requireSeverityFields(incident);</span>
+<span class="fc" id="L194">		Incident saved = incidents.save(incident);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">		if (saved.getSeverity().requiresExtendedFields()) {</span>
+<span class="fc" id="L196">			notifyHighSeverity(saved);</span>
+		}
+<span class="fc" id="L198">		return saved.getId();</span>
+	}
+
+	/** Changes the report (fields, severity, links). Raising it to HIGH / CRITICAL notifies the supervisors. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isOnOwnSite(#id))&quot;)
+	@AuditedAction(DomainActionType.INCIDENT_UPDATED)
+	@Transactional
+	public void update(Long id, Long expectedVersion, IncidentCommand command) {
+<span class="fc" id="L206">		Incident incident = load(id);</span>
+<span class="fc" id="L207">		IncidentRules.requireVersion(incident, expectedVersion);</span>
+<span class="fc" id="L208">		requireEditableByCaller(incident);</span>
+<span class="fc" id="L209">		Severity before = incident.getSeverity();</span>
+<span class="pc bpc" id="L210" title="1 of 6 branches missed.">		if (before.requiresExtendedFields() &amp;&amp; !command.severity().requiresExtendedFields() &amp;&amp; !isSupervisor()) {</span>
+<span class="fc" id="L211">			throw new InvalidFieldException(&quot;severity&quot;, SEVERITY_DOWNGRADE);</span>
+		}
+<span class="fc" id="L213">		incident.setTitle(command.title());</span>
+<span class="fc" id="L214">		incident.setDescription(command.description());</span>
+<span class="fc" id="L215">		incident.setSeverity(command.severity());</span>
+<span class="fc" id="L216">		incident.setCategory(command.category());</span>
+<span class="fc" id="L217">		incident.setOccurredAt(command.occurredAt());</span>
+<span class="fc" id="L218">		apply(incident, command);</span>
+<span class="fc" id="L219">		requireSeverityFields(incident);</span>
+<span class="fc bfc" id="L220" title="All 4 branches covered.">		if (!before.requiresExtendedFields() &amp;&amp; incident.getSeverity().requiresExtendedFields()) {</span>
+<span class="fc" id="L221">			notifyHighSeverity(incident);</span>
+		}
+<span class="fc" id="L223">	}</span>
+
+	/** REPORTED -&gt; UNDER_REVIEW. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isLowSeverityOnOwnSite(#id))&quot;)
+	@AuditedAction(DomainActionType.INCIDENT_REVIEW_STARTED)
+	@Transactional
+	public void startReview(Long id, Long expectedVersion) {
+<span class="fc" id="L230">		Incident incident = loadForTransition(id, expectedVersion);</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">		if (incident.getStatus() != IncidentStatus.REPORTED) {</span>
+<span class="fc" id="L232">			throw new InvalidTransitionException(REVIEW_NOT_REPORTED, &quot;incident &quot; + id + &quot; is &quot; + incident.getStatus());</span>
+		}
+<span class="fc" id="L234">		incident.setStatus(IncidentStatus.UNDER_REVIEW);</span>
+<span class="fc" id="L235">	}</span>
+
+	/**
+	 * UNDER_REVIEW -&gt; SIGNED_OFF, recording who and when. HIGH / CRITICAL: only a SAFETY_SUPERVISOR
+	 * ({@code @PreAuthorize}, checked again here against the loaded severity) and only with every
+	 * extra field filled (422 otherwise).
+	 */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isLowSeverityOnOwnSite(#id))&quot;)
+	@AuditedAction(DomainActionType.INCIDENT_SIGNED_OFF)
+	@Transactional
+	public void signOff(Long id, Long expectedVersion) {
+<span class="fc" id="L246">		Incident incident = loadForTransition(id, expectedVersion);</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">		if (incident.getStatus() != IncidentStatus.UNDER_REVIEW) {</span>
+<span class="fc" id="L248">			throw new InvalidTransitionException(SIGN_OFF_NOT_UNDER_REVIEW,</span>
+<span class="fc" id="L249">					&quot;incident &quot; + id + &quot; is &quot; + incident.getStatus());</span>
+		}
+<span class="fc" id="L251">		requireSeverityFields(incident);</span>
+<span class="fc" id="L252">		incident.setStatus(IncidentStatus.SIGNED_OFF);</span>
+<span class="fc" id="L253">		incident.setSignedOffBy(users.getReferenceById(currentUser.currentUserId()));</span>
+<span class="fc" id="L254">		incident.setSignedOffAt(Instant.now(clock));</span>
+<span class="fc" id="L255">	}</span>
+
+	/** SIGNED_OFF -&gt; CLOSED, only when every corrective action is DONE. */
+	@PreAuthorize(&quot;hasRole('SAFETY_SUPERVISOR') or (hasRole('SITE_MANAGER') and @incidentAccess.isLowSeverityOnOwnSite(#id))&quot;)
+	@AuditedAction(DomainActionType.INCIDENT_CLOSED)
+	@Transactional
+	public void close(Long id, Long expectedVersion) {
+<span class="fc" id="L262">		Incident incident = loadForTransition(id, expectedVersion);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">		if (incident.getStatus() != IncidentStatus.SIGNED_OFF) {</span>
+<span class="fc" id="L264">			throw new InvalidTransitionException(CLOSE_NOT_SIGNED_OFF, &quot;incident &quot; + id + &quot; is &quot; + incident.getStatus());</span>
+		}
+<span class="fc bfc" id="L266" title="All 2 branches covered.">		if (incident.getCorrectiveActions().stream().anyMatch(action -&gt; OPEN_ACTIONS.contains(action.getStatus()))) {</span>
+<span class="fc" id="L267">			throw new InvalidTransitionException(CLOSE_OPEN_ACTIONS, &quot;incident &quot; + id + &quot; has open corrective actions&quot;);</span>
+		}
+<span class="fc" id="L269">		incident.setStatus(IncidentStatus.CLOSED);</span>
+<span class="fc" id="L270">	}</span>
+
+	/** Deletes a REPORTED incident without corrective actions; returns its site id for the redirect. */
+	@PreAuthorize(&quot;hasRole('SITE_MANAGER') and @incidentAccess.isOnOwnSite(#id)&quot;)
+	@AuditedAction(DomainActionType.INCIDENT_DELETED)
+	@Transactional
+	public Long delete(Long id, Long expectedVersion) {
+<span class="fc" id="L277">		Incident incident = load(id);</span>
+<span class="fc" id="L278">		IncidentRules.requireVersion(incident, expectedVersion);</span>
+<span class="pc bpc" id="L279" title="1 of 4 branches missed.">		if (incident.getStatus() != IncidentStatus.REPORTED || !incident.getCorrectiveActions().isEmpty()) {</span>
+<span class="fc" id="L280">			throw new DeletionNotAllowedException(DELETE_BLOCKED, &quot;incident &quot; + id + &quot; is &quot; + incident.getStatus());</span>
+		}
+<span class="fc" id="L282">		Long siteId = incident.getSite().getId();</span>
+<span class="fc" id="L283">		incidents.delete(incident);</span>
+<span class="fc" id="L284">		return siteId;</span>
+	}
+
+	// ------------------------------------------------------------------ helpers
+
+	private Incident load(Long id) {
+<span class="fc" id="L290">		return incidents.findDetailById(id).orElseThrow(() -&gt; new NotFoundException(Incident.class, id));</span>
+	}
+
+	/**
+	 * Loads for a workflow step and repeats the AR2 rule on the loaded record: whatever the
+	 * expression saw, a HIGH / CRITICAL incident is never moved by someone who is not a supervisor.
+	 */
+	private Incident loadForTransition(Long id, Long expectedVersion) {
+<span class="fc" id="L298">		Incident incident = load(id);</span>
+<span class="fc" id="L299">		IncidentRules.requireVersion(incident, expectedVersion);</span>
+<span class="fc bfc" id="L300" title="All 4 branches covered.">		if (incident.getSeverity().requiresExtendedFields() &amp;&amp; !isSupervisor()) {</span>
+<span class="fc" id="L301">			throw new AccessDeniedException(&quot;HIGH/CRITICAL incident &quot; + id + &quot; needs a safety supervisor&quot;);</span>
+		}
+<span class="fc" id="L303">		return incident;</span>
+	}
+
+	private void requireEditableByCaller(Incident incident) {
+<span class="fc bfc" id="L307" title="All 2 branches covered.">		if (!incident.getStatus().isOpen()) {</span>
+<span class="fc" id="L308">			throw new InvalidTransitionException(NOT_EDITABLE,</span>
+<span class="fc" id="L309">					&quot;incident &quot; + incident.getId() + &quot; is &quot; + incident.getStatus());</span>
+		}
+<span class="fc bfc" id="L311" title="All 4 branches covered.">		if (incident.getStatus() == IncidentStatus.UNDER_REVIEW &amp;&amp; !isSupervisor()) {</span>
+<span class="fc" id="L312">			throw new InvalidTransitionException(UNDER_REVIEW_BY_SUPERVISOR,</span>
+<span class="fc" id="L313">					&quot;incident &quot; + incident.getId() + &quot; is under review&quot;);</span>
+		}
+<span class="fc" id="L315">	}</span>
+
+	private boolean isSupervisor() {
+<span class="fc" id="L318">		return currentUser.currentUser().hasRole(RoleName.SAFETY_SUPERVISOR);</span>
+	}
+
+	/** Fields shared by report and update: date check, daily log link, crews, AR2 fields. */
+	private void apply(Incident incident, IncidentCommand command) {
+<span class="pc bpc" id="L323" title="1 of 4 branches missed.">		if (command.occurredAt() != null &amp;&amp; command.occurredAt().isAfter(Instant.now(clock))) {</span>
+<span class="fc" id="L324">			throw new InvalidFieldException(&quot;occurredAt&quot;, OCCURRED_FUTURE);</span>
+		}
+<span class="fc" id="L326">		incident.setDailyLog(dailyLogFor(incident.getSite().getId(), command.dailyLogId()));</span>
+<span class="fc" id="L327">		syncCrews(incident, command.affectedCrewIds());</span>
+<span class="fc" id="L328">		incident.setRootCause(IncidentRules.blankToNull(command.rootCause()));</span>
+<span class="fc" id="L329">		incident.setWitnesses(IncidentRules.blankToNull(command.witnesses()));</span>
+<span class="fc" id="L330">		incident.setMedicalTreatment(IncidentRules.blankToNull(command.medicalTreatment()));</span>
+<span class="fc" id="L331">		incident.setAuthorityNotified(command.authorityNotified());</span>
+<span class="fc" id="L332">	}</span>
+
+	private DailyLog dailyLogFor(Long siteId, Long dailyLogId) {
+<span class="fc bfc" id="L335" title="All 2 branches covered.">		if (dailyLogId == null) {</span>
+<span class="fc" id="L336">			return null;</span>
+		}
+<span class="fc bfc" id="L338" title="All 2 branches covered.">		if (!dailyLogs.existsByIdAndSite_Id(dailyLogId, siteId)) {</span>
+<span class="fc" id="L339">			throw new InvalidFieldException(&quot;dailyLogId&quot;, DAILY_LOG_INVALID);</span>
+		}
+<span class="fc" id="L341">		return dailyLogs.getReferenceById(dailyLogId);</span>
+	}
+
+	/** New crews must exist and be active; a crew already listed stays even if deactivated since. */
+	private void syncCrews(Incident incident, List&lt;Long&gt; crewIds) {
+<span class="fc" id="L346">		Set&lt;Long&gt; wanted = new LinkedHashSet&lt;&gt;(crewIds);</span>
+<span class="fc" id="L347">		Map&lt;Long, Crew&gt; current = incident.getAffectedCrews().stream()</span>
+<span class="fc" id="L348">			.collect(Collectors.toMap(Crew::getId, Function.identity()));</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">		List&lt;Long&gt; added = wanted.stream().filter(crewId -&gt; !current.containsKey(crewId)).toList();</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">		List&lt;Crew&gt; found = added.isEmpty() ? List.of() : crews.findAllById(added);</span>
+<span class="pc bpc" id="L351" title="1 of 6 branches missed.">		if (found.size() != added.size() || found.stream().anyMatch(crew -&gt; !crew.isActive())) {</span>
+<span class="fc" id="L352">			throw new InvalidFieldException(&quot;affectedCrewIds&quot;, CREWS_INVALID);</span>
+		}
+<span class="fc" id="L354">		new ArrayList&lt;&gt;(current.values()).stream()</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">			.filter(crew -&gt; !wanted.contains(crew.getId()))</span>
+<span class="fc" id="L356">			.forEach(incident::removeAffectedCrew);</span>
+<span class="fc" id="L357">		found.forEach(incident::addAffectedCrew);</span>
+<span class="fc" id="L358">	}</span>
+
+	private static void requireSeverityFields(Incident incident) {
+<span class="fc" id="L361">		List&lt;String&gt; missing = IncidentRules.missingSeverityFields(incident);</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">		if (!missing.isEmpty()) {</span>
+<span class="fc" id="L363">			throw new MissingSeverityFieldsException(incident.getId(), missing);</span>
+		}
+<span class="fc" id="L365">	}</span>
+
+	private void notifyHighSeverity(Incident incident) {
+<span class="fc" id="L368">		notifications.notifyRole(RoleName.SAFETY_SUPERVISOR, NotificationType.HIGH_SEVERITY_INCIDENT,</span>
+<span class="fc" id="L369">				&quot;/incidents/&quot; + incident.getId(), incident.getSite().getCode(), incident.getSeverity().name(),</span>
+<span class="fc" id="L370">				incident.getTitle());</span>
+<span class="fc" id="L371">	}</span>
+
+	private static Specification&lt;Incident&gt; specification(IncidentFilter filter) {
+<span class="fc" id="L374">		Specification&lt;Incident&gt; spec = (root, query, cb) -&gt; cb.conjunction();</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">		if (filter.siteId() != null) {</span>
+<span class="fc" id="L376">			spec = spec.and((root, query, cb) -&gt; cb.equal(root.get(&quot;site&quot;).get(&quot;id&quot;), filter.siteId()));</span>
+		}
+<span class="fc bfc" id="L378" title="All 2 branches covered.">		if (filter.status() != null) {</span>
+<span class="fc" id="L379">			spec = spec.and((root, query, cb) -&gt; cb.equal(root.get(&quot;status&quot;), filter.status()));</span>
+		}
+<span class="fc bfc" id="L381" title="All 2 branches covered.">		if (filter.severity() != null) {</span>
+<span class="fc" id="L382">			spec = spec.and((root, query, cb) -&gt; cb.equal(root.get(&quot;severity&quot;), filter.severity()));</span>
+		}
+<span class="fc" id="L384">		return spec;</span>
+	}
+
+	private IncidentDetails toDetails(Incident incident) {
+<span class="fc" id="L388">		ZoneId zone = clock.getZone();</span>
+<span class="fc" id="L389">		LocalDate today = LocalDate.now(clock);</span>
+<span class="fc" id="L390">		return new IncidentDetails(incident.getId(), incident.getSite().getId(), incident.getSite().getCode(),</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">				incident.getSite().getName(), incident.getDailyLog() == null ? null : incident.getDailyLog().getId(),</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">				incident.getDailyLog() == null ? null : incident.getDailyLog().getLogDate(),</span>
+<span class="fc" id="L393">				incident.getOccurredAt().atZone(zone), incident.getTitle(), incident.getDescription(),</span>
+<span class="fc" id="L394">				incident.getSeverity(), incident.getCategory(), incident.getStatus(), incident.getRootCause(),</span>
+<span class="fc" id="L395">				incident.getWitnesses(), incident.getMedicalTreatment(), incident.getAuthorityNotified(),</span>
+<span class="fc" id="L396">				incident.getReportedBy().getFullName(),</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">				incident.getSignedOffBy() == null ? null : incident.getSignedOffBy().getFullName(),</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">				incident.getSignedOffAt() == null ? null : incident.getSignedOffAt().atZone(zone),</span>
+<span class="fc" id="L399">				incident.getVersion(),</span>
+<span class="fc" id="L400">				incident.getAffectedCrews().stream()</span>
+<span class="fc" id="L401">					.map(crew -&gt; new CrewOption(crew.getId(), crew.getName(), crew.getTrade(), crew.isActive()))</span>
+<span class="fc" id="L402">					.toList(),</span>
+<span class="fc" id="L403">				incident.getCorrectiveActions().stream().map(action -&gt; CorrectiveActionView.of(action, today, zone))</span>
+<span class="fc" id="L404">					.toList(),</span>
+<span class="fc" id="L405">				IncidentRules.missingSeverityFields(incident), timeline(incident));</span>
+	}
+
+	/**
+	 * Recorded actions, oldest first. Incidents created before the aspect existed (the V4 demo
+	 * data) have no recorded &quot;reported&quot; / &quot;signed off&quot; action; those two are then taken from the
+	 * incident's own columns, so every timeline starts with the report.
+	 */
+	private List&lt;DomainActionView&gt; timeline(Incident incident) {
+<span class="fc" id="L414">		ZoneId zone = clock.getZone();</span>
+<span class="fc" id="L415">		List&lt;DomainActionView&gt; recorded = domainActions.timeline(AuditedEntityType.INCIDENT, incident.getId());</span>
+<span class="fc" id="L416">		List&lt;DomainActionView&gt; timeline = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">		boolean reported = recorded.stream().anyMatch(a -&gt; a.action() == DomainActionType.INCIDENT_REPORTED);</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">		boolean signed = recorded.stream().anyMatch(a -&gt; a.action() == DomainActionType.INCIDENT_SIGNED_OFF);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">		if (!reported) {</span>
+<span class="fc" id="L420">			timeline.add(DomainActionView.of(DomainActionType.INCIDENT_REPORTED, incident.getReportedBy().getFullName(),</span>
+<span class="fc" id="L421">					incident.getOccurredAt().atZone(zone)));</span>
+		}
+<span class="fc" id="L423">		timeline.addAll(recorded);</span>
+<span class="fc bfc" id="L424" title="All 4 branches covered.">		if (!signed &amp;&amp; incident.getSignedOffAt() != null) {</span>
+<span class="fc" id="L425">			timeline.add(DomainActionView.of(DomainActionType.INCIDENT_SIGNED_OFF,</span>
+<span class="pc bpc" id="L426" title="1 of 2 branches missed.">					incident.getSignedOffBy() == null ? null : incident.getSignedOffBy().getFullName(),</span>
+<span class="fc" id="L427">					incident.getSignedOffAt().atZone(zone)));</span>
+<span class="fc" id="L428">			timeline.sort(java.util.Comparator.comparing(DomainActionView::occurredAt));</span>
+		}
+<span class="fc" id="L430">		return timeline;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

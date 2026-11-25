@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CrewAssignmentResponse.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.api.dailylog</a> &gt; <span class="el_source">CrewAssignmentResponse.java</span></div><h1>CrewAssignmentResponse.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.api.dailylog;
+
+import java.math.BigDecimal;
+
+import hr.algebra.sitelog.dailylog.service.CrewAssignmentView;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+/**
+ * One crew row (association WorkEntry - Crew with its own attributes). {@code logVersion} is the
+ * current version of the parent daily log, sent back as {@code logVersion} on the next change.
+ */
+@Schema(description = &quot;Crew row of a work entry&quot;)
+<span class="fc" id="L13">public record CrewAssignmentResponse(Long id,</span>
+		@Schema(description = &quot;Current version of the parent daily log (send it back on the next change)&quot;) Long logVersion,
+		Long crewId, String crewName, String crewTrade,
+		@Schema(description = &quot;False for a crew deactivated after it was assigned (kept in old logs)&quot;) boolean crewActive,
+		BigDecimal hoursWorked, int workerCount, String task) {
+
+	static CrewAssignmentResponse of(CrewAssignmentView row, Long logVersion) {
+<span class="fc" id="L20">		return new CrewAssignmentResponse(row.id(), logVersion, row.crewId(), row.crewName(), row.crewTrade(), row.crewActive(),</span>
+<span class="fc" id="L21">				row.hoursWorked(), row.workerCount(), row.task());</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

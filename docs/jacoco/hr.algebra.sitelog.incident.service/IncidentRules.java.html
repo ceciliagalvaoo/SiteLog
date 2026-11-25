@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentRules.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.service</a> &gt; <span class="el_source">IncidentRules.java</span></div><h1>IncidentRules.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
+import hr.algebra.sitelog.incident.domain.Incident;
+import hr.algebra.sitelog.incident.domain.Severity;
+
+/** Checks shared by the incident and corrective action services. */
+final class IncidentRules {
+
+	/** Property names of the AR2 fields, in form order (also the names of the form fields). */
+<span class="fc" id="L16">	static final List&lt;String&gt; SEVERITY_FIELDS = List.of(&quot;rootCause&quot;, &quot;witnesses&quot;, &quot;medicalTreatment&quot;,</span>
+			&quot;authorityNotified&quot;);
+
+	private IncidentRules() {
+	}
+
+	/**
+	 * AR2: which of the extra fields a HIGH / CRITICAL incident still lacks (blank text counts as
+	 * missing, like {@code ck_incident_severity_fields}); always empty for LOW / MEDIUM.
+	 */
+	static List&lt;String&gt; missingSeverityFields(Severity severity, String rootCause, String witnesses,
+			String medicalTreatment, Boolean authorityNotified) {
+<span class="fc" id="L28">		List&lt;String&gt; missing = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L29" title="All 4 branches covered.">		if (severity == null || !severity.requiresExtendedFields()) {</span>
+<span class="fc" id="L30">			return missing;</span>
+		}
+<span class="fc bfc" id="L32" title="All 2 branches covered.">		if (isBlank(rootCause)) {</span>
+<span class="fc" id="L33">			missing.add(&quot;rootCause&quot;);</span>
+		}
+<span class="fc bfc" id="L35" title="All 2 branches covered.">		if (isBlank(witnesses)) {</span>
+<span class="fc" id="L36">			missing.add(&quot;witnesses&quot;);</span>
+		}
+<span class="fc bfc" id="L38" title="All 2 branches covered.">		if (isBlank(medicalTreatment)) {</span>
+<span class="fc" id="L39">			missing.add(&quot;medicalTreatment&quot;);</span>
+		}
+<span class="fc bfc" id="L41" title="All 2 branches covered.">		if (authorityNotified == null) {</span>
+<span class="fc" id="L42">			missing.add(&quot;authorityNotified&quot;);</span>
+		}
+<span class="fc" id="L44">		return missing;</span>
+	}
+
+	static List&lt;String&gt; missingSeverityFields(Incident incident) {
+<span class="fc" id="L48">		return missingSeverityFields(incident.getSeverity(), incident.getRootCause(), incident.getWitnesses(),</span>
+<span class="fc" id="L49">				incident.getMedicalTreatment(), incident.getAuthorityNotified());</span>
+	}
+
+	/** Same contract as for daily logs: the form's version must be the current one, else 409. */
+	static void requireVersion(Incident incident, Long expectedVersion) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">		if (!Objects.equals(incident.getVersion(), expectedVersion)) {</span>
+<span class="fc" id="L55">			throw new ObjectOptimisticLockingFailureException(Incident.class, incident.getId());</span>
+		}
+<span class="fc" id="L57">	}</span>
+
+	static boolean isBlank(String value) {
+<span class="fc bfc" id="L60" title="All 4 branches covered.">		return value == null || value.isBlank();</span>
+	}
+
+	static String blankToNull(String value) {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">		return isBlank(value) ? null : value.strip();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

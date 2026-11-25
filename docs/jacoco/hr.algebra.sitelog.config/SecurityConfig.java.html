@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.LocaleResolver;
 
+import hr.algebra.sitelog.api.security.ApiRequests;
+import hr.algebra.sitelog.api.security.ApiSecurityHandlers;
 import hr.algebra.sitelog.user.security.PreferredLanguageLoginSuccessHandler;
 
 /**
@@ -34,38 +36,44 @@ import hr.algebra.sitelog.user.security.PreferredLanguageLoginSuccessHandler;
  * &lt;/ul&gt;
  */
 @Configuration(proxyBeanMethods = false)
-<span class="fc" id="L37">public class SecurityConfig {</span>
+<span class="fc" id="L39">public class SecurityConfig {</span>
 
 	public static final String LOGIN_PAGE = &quot;/login&quot;;
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http, LocaleResolver localeResolver) throws Exception {
-<span class="fc" id="L43">		http</span>
-<span class="fc" id="L44">			.authorizeHttpRequests(auth -&gt; auth</span>
-<span class="fc" id="L45">				.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;).permitAll()</span>
+<span class="fc" id="L45">		http</span>
+<span class="fc" id="L46">			.authorizeHttpRequests(auth -&gt; auth</span>
+<span class="fc" id="L47">				.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;).permitAll()</span>
 				// static assets of the layout (also needed by the login page)
-<span class="fc" id="L47">				.requestMatchers(&quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/img/**&quot;, &quot;/favicon.ico&quot;).permitAll()</span>
-<span class="fc" id="L48">				.requestMatchers(LOGIN_PAGE, &quot;/error&quot;).permitAll()</span>
-<span class="fc" id="L49">				.requestMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L49">				.requestMatchers(&quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/img/**&quot;, &quot;/favicon.ico&quot;).permitAll()</span>
+<span class="fc" id="L50">				.requestMatchers(LOGIN_PAGE, &quot;/error&quot;).permitAll()</span>
+				// REST clients need a CSRF token before they can POST /login
+<span class="fc" id="L52">				.requestMatchers(HttpMethod.GET, ApiRequests.CSRF_TOKEN_PATH).permitAll()</span>
+<span class="fc" id="L53">				.requestMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
 				// crew forms and crew writes: refused before binding/validation, so a non-admin never
 				// sees the form (not even re-rendered with errors); the service checks the writes again
-<span class="fc" id="L52">				.requestMatchers(HttpMethod.GET, &quot;/crews/new&quot;, &quot;/crews/*/edit&quot;).hasRole(&quot;ADMIN&quot;)</span>
-<span class="fc" id="L53">				.requestMatchers(HttpMethod.POST, &quot;/crews&quot;, &quot;/crews/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
-<span class="fc" id="L54">				.anyRequest().authenticated())</span>
-<span class="fc" id="L55">			.formLogin(form -&gt; form</span>
-<span class="fc" id="L56">				.loginPage(LOGIN_PAGE)</span>
-<span class="fc" id="L57">				.usernameParameter(&quot;email&quot;)</span>
-<span class="fc" id="L58">				.passwordParameter(&quot;password&quot;)</span>
-<span class="fc" id="L59">				.successHandler(new PreferredLanguageLoginSuccessHandler(localeResolver))</span>
-<span class="fc" id="L60">				.failureUrl(LOGIN_PAGE + &quot;?error&quot;)</span>
-<span class="fc" id="L61">				.permitAll())</span>
-<span class="fc" id="L62">			.logout(logout -&gt; logout</span>
-<span class="fc" id="L63">				.logoutUrl(&quot;/logout&quot;)</span>
-<span class="fc" id="L64">				.logoutSuccessUrl(LOGIN_PAGE + &quot;?logout&quot;)</span>
-<span class="fc" id="L65">				.invalidateHttpSession(true)</span>
-<span class="fc" id="L66">				.deleteCookies(&quot;JSESSIONID&quot;)</span>
-<span class="fc" id="L67">				.permitAll());</span>
-<span class="fc" id="L68">		return http.build();</span>
+<span class="fc" id="L56">				.requestMatchers(HttpMethod.GET, &quot;/crews/new&quot;, &quot;/crews/*/edit&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L57">				.requestMatchers(HttpMethod.POST, &quot;/crews&quot;, &quot;/crews/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L58">				.anyRequest().authenticated())</span>
+<span class="fc" id="L59">			.formLogin(form -&gt; form</span>
+<span class="fc" id="L60">				.loginPage(LOGIN_PAGE)</span>
+<span class="fc" id="L61">				.usernameParameter(&quot;email&quot;)</span>
+<span class="fc" id="L62">				.passwordParameter(&quot;password&quot;)</span>
+<span class="fc" id="L63">				.successHandler(new PreferredLanguageLoginSuccessHandler(localeResolver))</span>
+<span class="fc" id="L64">				.failureUrl(LOGIN_PAGE + &quot;?error&quot;)</span>
+<span class="fc" id="L65">				.permitAll())</span>
+<span class="fc" id="L66">			.logout(logout -&gt; logout</span>
+<span class="fc" id="L67">				.logoutUrl(&quot;/logout&quot;)</span>
+<span class="fc" id="L68">				.logoutSuccessUrl(LOGIN_PAGE + &quot;?logout&quot;)</span>
+<span class="fc" id="L69">				.invalidateHttpSession(true)</span>
+<span class="fc" id="L70">				.deleteCookies(&quot;JSESSIONID&quot;)</span>
+<span class="fc" id="L71">				.permitAll())</span>
+			// /api/**: 401 / 403 as ProblemDetail instead of the login redirect and the HTML error page
+<span class="fc" id="L73">			.exceptionHandling(ex -&gt; ex</span>
+<span class="fc" id="L74">				.authenticationEntryPoint(ApiSecurityHandlers.authenticationEntryPoint(LOGIN_PAGE))</span>
+<span class="fc" id="L75">				.accessDeniedHandler(ApiSecurityHandlers.accessDeniedHandler()));</span>
+<span class="fc" id="L76">		return http.build();</span>
 	}
 
 	/**
@@ -74,7 +82,7 @@ import hr.algebra.sitelog.user.security.PreferredLanguageLoginSuccessHandler;
 	 */
 	@Bean
 	PasswordEncoder passwordEncoder() {
-<span class="fc" id="L77">		return new BCryptPasswordEncoder();</span>
+<span class="fc" id="L85">		return new BCryptPasswordEncoder();</span>
 	}
 
 }

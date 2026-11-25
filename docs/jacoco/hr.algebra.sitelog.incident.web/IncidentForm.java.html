@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncidentForm.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">SiteLog</a> &gt; <a href="index.source.html" class="el_package">hr.algebra.sitelog.incident.web</a> &gt; <span class="el_source">IncidentForm.java</span></div><h1>IncidentForm.java</h1><pre class="source lang-java linenums">package hr.algebra.sitelog.incident.web;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.format.annotation.DateTimeFormat;
+
+import hr.algebra.sitelog.crew.service.CrewOption;
+import hr.algebra.sitelog.incident.domain.IncidentCategory;
+import hr.algebra.sitelog.incident.domain.Severity;
+import hr.algebra.sitelog.incident.service.IncidentCommand;
+import hr.algebra.sitelog.incident.service.IncidentDetails;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+/**
+ * Report / edit incident form. Field names = {@code IncidentCommand} names, so a service
+ * {@code InvalidFieldException(&quot;dailyLogId&quot;, ...)} lands on the right field.
+ *
+ * &lt;p&gt;{@code occurredAt} comes from an {@code &lt;input type=&quot;datetime-local&quot;&gt;} in the sites' time
+ * zone and becomes an {@code Instant} in {@link #toCommand}. The four AR2 fields carry the
+ * {@link HighSeverity} validation group; the controller validates that group only when
+ * {@link #requiresExtendedFields()} (HIGH / CRITICAL), in the same {@code BindingResult}, so the
+ * user sees every missing field at once.
+ */
+<span class="fc" id="L30">public class IncidentForm {</span>
+
+	@NotNull(message = &quot;{validation.incident.occurredAt.required}&quot;)
+	@DateTimeFormat(pattern = &quot;yyyy-MM-dd'T'HH:mm&quot;)
+	private LocalDateTime occurredAt;
+
+	@NotBlank(message = &quot;{validation.incident.title.required}&quot;)
+	@Size(max = 200, message = &quot;{validation.size.max}&quot;)
+	private String title;
+
+	@NotBlank(message = &quot;{validation.incident.description.required}&quot;)
+	@Size(max = 5000, message = &quot;{validation.size.max}&quot;)
+	private String description;
+
+	@NotNull(message = &quot;{validation.incident.severity.required}&quot;)
+	private Severity severity;
+
+	@NotNull(message = &quot;{validation.incident.category.required}&quot;)
+	private IncidentCategory category;
+
+	/** Optional link to a daily log of the same site. */
+	private Long dailyLogId;
+
+<span class="fc" id="L53">	private List&lt;Long&gt; affectedCrewIds = new ArrayList&lt;&gt;();</span>
+
+	@NotBlank(groups = HighSeverity.class, message = &quot;{validation.incident.rootCause.required}&quot;)
+	@Size(max = 5000, message = &quot;{validation.size.max}&quot;)
+	private String rootCause;
+
+	@NotBlank(groups = HighSeverity.class, message = &quot;{validation.incident.witnesses.required}&quot;)
+	@Size(max = 2000, message = &quot;{validation.size.max}&quot;)
+	private String witnesses;
+
+	@NotBlank(groups = HighSeverity.class, message = &quot;{validation.incident.medicalTreatment.required}&quot;)
+	@Size(max = 2000, message = &quot;{validation.size.max}&quot;)
+	private String medicalTreatment;
+
+	@NotNull(groups = HighSeverity.class, message = &quot;{validation.incident.authorityNotified.required}&quot;)
+	private Boolean authorityNotified;
+
+	/** Version shown when the edit form was loaded (optimistic locking); null on create. */
+	private Long version;
+
+	/** AR2: HIGH and CRITICAL need root cause, witnesses, medical treatment and authority notified. */
+	public boolean requiresExtendedFields() {
+<span class="fc bfc" id="L75" title="All 4 branches covered.">		return severity != null &amp;&amp; severity.requiresExtendedFields();</span>
+	}
+
+	/** Empty form, &quot;occurred&quot; defaulting to now (minutes) in the sites' zone. */
+	public static IncidentForm blank(Clock clock) {
+<span class="fc" id="L80">		IncidentForm form = new IncidentForm();</span>
+<span class="fc" id="L81">		form.occurredAt = LocalDateTime.now(clock).withSecond(0).withNano(0);</span>
+<span class="fc" id="L82">		return form;</span>
+	}
+
+	public static IncidentForm from(IncidentDetails incident) {
+<span class="fc" id="L86">		IncidentForm form = new IncidentForm();</span>
+<span class="fc" id="L87">		form.occurredAt = incident.occurredAt().toLocalDateTime().withSecond(0).withNano(0);</span>
+<span class="fc" id="L88">		form.title = incident.title();</span>
+<span class="fc" id="L89">		form.description = incident.description();</span>
+<span class="fc" id="L90">		form.severity = incident.severity();</span>
+<span class="fc" id="L91">		form.category = incident.category();</span>
+<span class="fc" id="L92">		form.dailyLogId = incident.dailyLogId();</span>
+<span class="fc" id="L93">		form.affectedCrewIds = new ArrayList&lt;&gt;(incident.affectedCrews().stream().map(CrewOption::id).toList());</span>
+<span class="fc" id="L94">		form.rootCause = incident.rootCause();</span>
+<span class="fc" id="L95">		form.witnesses = incident.witnesses();</span>
+<span class="fc" id="L96">		form.medicalTreatment = incident.medicalTreatment();</span>
+<span class="fc" id="L97">		form.authorityNotified = incident.authorityNotified();</span>
+<span class="fc" id="L98">		form.version = incident.version();</span>
+<span class="fc" id="L99">		return form;</span>
+	}
+
+	public IncidentCommand toCommand(ZoneId zone) {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">		return new IncidentCommand(occurredAt == null ? null : occurredAt.atZone(zone).toInstant(), trim(title),</span>
+<span class="fc" id="L104">				trim(description), severity, category, dailyLogId,</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">				affectedCrewIds == null ? List.of() : affectedCrewIds.stream().filter(java.util.Objects::nonNull).toList(),</span>
+				rootCause, witnesses, medicalTreatment, authorityNotified);
+	}
+
+	private static String trim(String value) {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">		return value == null ? null : value.strip();</span>
+	}
+
+	public LocalDateTime getOccurredAt() {
+<span class="fc" id="L114">		return occurredAt;</span>
+	}
+
+	public void setOccurredAt(LocalDateTime occurredAt) {
+<span class="fc" id="L118">		this.occurredAt = occurredAt;</span>
+<span class="fc" id="L119">	}</span>
+
+	public String getTitle() {
+<span class="fc" id="L122">		return title;</span>
+	}
+
+	public void setTitle(String title) {
+<span class="fc" id="L126">		this.title = title;</span>
+<span class="fc" id="L127">	}</span>
+
+	public String getDescription() {
+<span class="fc" id="L130">		return description;</span>
+	}
+
+	public void setDescription(String description) {
+<span class="fc" id="L134">		this.description = description;</span>
+<span class="fc" id="L135">	}</span>
+
+	public Severity getSeverity() {
+<span class="fc" id="L138">		return severity;</span>
+	}
+
+	public void setSeverity(Severity severity) {
+<span class="fc" id="L142">		this.severity = severity;</span>
+<span class="fc" id="L143">	}</span>
+
+	public IncidentCategory getCategory() {
+<span class="fc" id="L146">		return category;</span>
+	}
+
+	public void setCategory(IncidentCategory category) {
+<span class="fc" id="L150">		this.category = category;</span>
+<span class="fc" id="L151">	}</span>
+
+	public Long getDailyLogId() {
+<span class="fc" id="L154">		return dailyLogId;</span>
+	}
+
+	public void setDailyLogId(Long dailyLogId) {
+<span class="nc" id="L158">		this.dailyLogId = dailyLogId;</span>
+<span class="nc" id="L159">	}</span>
+
+	public List&lt;Long&gt; getAffectedCrewIds() {
+<span class="fc" id="L162">		return affectedCrewIds;</span>
+	}
+
+	public void setAffectedCrewIds(List&lt;Long&gt; affectedCrewIds) {
+<span class="fc" id="L166">		this.affectedCrewIds = affectedCrewIds;</span>
+<span class="fc" id="L167">	}</span>
+
+	public String getRootCause() {
+<span class="fc" id="L170">		return rootCause;</span>
+	}
+
+	public void setRootCause(String rootCause) {
+<span class="fc" id="L174">		this.rootCause = rootCause;</span>
+<span class="fc" id="L175">	}</span>
+
+	public String getWitnesses() {
+<span class="fc" id="L178">		return witnesses;</span>
+	}
+
+	public void setWitnesses(String witnesses) {
+<span class="fc" id="L182">		this.witnesses = witnesses;</span>
+<span class="fc" id="L183">	}</span>
+
+	public String getMedicalTreatment() {
+<span class="fc" id="L186">		return medicalTreatment;</span>
+	}
+
+	public void setMedicalTreatment(String medicalTreatment) {
+<span class="fc" id="L190">		this.medicalTreatment = medicalTreatment;</span>
+<span class="fc" id="L191">	}</span>
+
+	public Boolean getAuthorityNotified() {
+<span class="fc" id="L194">		return authorityNotified;</span>
+	}
+
+	public void setAuthorityNotified(Boolean authorityNotified) {
+<span class="fc" id="L198">		this.authorityNotified = authorityNotified;</span>
+<span class="fc" id="L199">	}</span>
+
+	public Long getVersion() {
+<span class="fc" id="L202">		return version;</span>
+	}
+
+	public void setVersion(Long version) {
+<span class="fc" id="L206">		this.version = version;</span>
+<span class="fc" id="L207">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
