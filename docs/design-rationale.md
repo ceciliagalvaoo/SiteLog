@@ -313,7 +313,12 @@ other way:
 | Topic | Prototype | Implementation | Reason |
 |---|---|---|---|
 | Navigation by role | Every frame shows the full sidebar, including the *Admin* group | The *Admin* group and admin actions are rendered only for the Admin (`sec:authorize`) | Each frame shows one screen; the template adapts to the signed-in role |
-| Workflow actions | Incident detail shows Start review, Sign off and Close together | Only the next valid action for the status and role | Actions follow the severity workflow (AR2) |
+| Workflow actions | Incident detail shows Start review, Sign off and Close together | Only the next valid action for the status and role; *Sign off* disabled while AR2 fields are missing, with the list of missing fields | Actions follow the severity workflow (AR2) |
+| Investigation section | Appears only when the severity is High | Always in the form: optional (grey) for Low / Medium, required (amber, `*`) for High / Critical; rendered by the server, switched live by a small script | The form works without JavaScript and a severity change never hides typed data |
+| Corrective action | Modal over the incident detail | Own page with the modal's card | Needs the assignee list and shows its errors after the POST without JavaScript |
+| Reopened log | Crew rows become inline inputs with *Save changes* | The usual *Edit log* form and per-row controls | One form = one optimistic-lock version and one audited revision |
+| Daily log *Activity* card | Created / Signed off / Reopen requested / approved | *Reopen requests* card + a separate *Revision history* page (Envers before / after) | The full audit trail (AR1) needs more room than a side card |
+| Incident list | KPI strip, search, site filter | Status and severity filters; KPIs in the compliance report | AR2 questions: what is open, what is serious |
 | Change password | My profile shows the account fields | A *Change password* section is added to the profile (M3) | Users created by the Admin must replace their initial password |
 | Contrast | Labels and placeholders pass since revision 2; page leads, card subtitles and eyebrows still use light greys (2.8–4.1:1) | All secondary text uses `#54625D` (5.8–6.4:1) or `#5D6B67` (≥ 5.07:1) | WCAG AA — see [contrast check](#accessibility-wcag-aa-contrast-check) |
 | Date and time inputs | Drawn as text fields with `dd/mm/yyyy` / `--:--` and an icon | Native `type="date"` / `type="time"`: the browser shows the format and picker of the user's locale | Right keyboard and picker on phones; the value is sent as ISO and bound to `LocalDate` / `LocalTime` |
@@ -332,16 +337,17 @@ per screen, is the Figma frame → template table in the README.
 | 1 | Access – Login | `auth/login.html` |
 | 2–3 | Daily logs – New daily log form, validation errors | `dailylog/form.html` |
 | 4 | Site overview with "Daily log saved" flash | `site/detail.html` + `fragments/flash` |
-| 5, 8–10 | Daily log detail – Signed off, reopen pending, Reopened, Draft | `dailylog/detail.html` |
-| 6–7 | Request reopen modal, with error | `fragments/modal` in `dailylog/detail.html` |
+| 5, 8–10 | Daily log detail – Signed off, reopen pending, Reopened, Draft | `dailylog/detail.html` (+ `dailylog/history.html`, `dailylog/reopen-requests.html`, no frame) |
+| 6–7 | Request reopen modal, with error | `fragments/modal :: modalIcon` in `dailylog/detail.html` |
 | 11–14 | Mobile 390 – login, sites, daily logs cards, daily log form | same templates, responsive CSS |
 | 15 | Incidents list | `incident/list.html` |
 | 16–18 | Report incident – Low, High, High with errors | `incident/form.html` |
-| 19–21 | Incident detail, corrective action modal, with errors | `incident/detail.html` |
+| 19–21 | Incident detail, corrective action modal, with errors | `incident/detail.html`, `correctiveaction/form.html` |
 | 22–26 | Assisted reporting – idle, loading, populated, manual input, unavailable | `ai/shift-note.html` |
 | 27, 33 | Compliance report (global and site tab) | `report/compliance.html` |
 | 28 | Sites list | `site/list.html` |
-| 29, 31, 31b, 32 | Site detail – overview, daily logs (with data and empty), incidents | `site/detail.html` |
+| 29, 31, 31b | Site detail – overview, daily logs (with data and empty) | `site/detail.html` |
+| 32 | Site detail – incidents | `incident/list.html` (site's list with the site tabs) |
 | 30, 34 | Site settings, New site | `site/form.html` |
 | 35 | My profile | `user/profile.html` |
 | 36–39 | Users list, detail, form, form error | `user/list.html`, `user/form.html` (detail and edit on one page) |
