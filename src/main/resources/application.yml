@@ -63,3 +63,18 @@ sitelog:
   # Dates such as "today's log" and "overdue" are computed in the sites' time zone, not the
   # server's (Render runs in UTC).
   time-zone: Europe/Zagreb
+
+# REST API documentation (springdoc-openapi 3.x): only the /api/** controllers are documented.
+# /v3/api-docs and /swagger-ui.html need a signed-in user (anyRequest().authenticated()).
+springdoc:
+  packages-to-scan: hr.algebra.sitelog.api
+  paths-to-match: /api/**
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    # keeps the CSRF token pasted into "Authorize" across page reloads
+    persist-authorization: true
