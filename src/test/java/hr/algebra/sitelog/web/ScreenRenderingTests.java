@@ -1,5 +1,6 @@
 package hr.algebra.sitelog.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -41,7 +42,10 @@ import hr.algebra.sitelog.TestcontainersConfiguration;
  * states the prototype draws: empty list, validation errors, locked log, blocked delete.
  *
  * <p>Requests run as the seed site manager of ZG-01 / ZG-02 ({@code @WithUserDetails}, loaded by
- * the real {@code AppUserDetailsService}); the Admin-only pages and actions run as the seed admin.
+ * the real {@code AppUserDetailsService}); the Admin-only pages and actions run as the seed admin,
+ * the corrective action form and the reopen decision as the seed safety supervisor. The incident,
+ * reopen and history screens (M3-06) are checked in the same way, plus their states: High severity
+ * with the required investigation, missing AR2 fields, reopen pending / reopened.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
@@ -108,6 +112,146 @@ class ScreenRenderingTests {
 		for (String page : adminPages()) {
 			assertRendersWithoutMissingKeys(page, lang, ADMIN);
 		}
+	}
+
+	// ------------------------------------------------------------------ M3-06: incidents, reopen, history
+
+	static final String SUPERVISOR = "supervisor@sitelog.test";
+
+	private long incidentId(String title) {
+		return id("select id from incident where title = '" + title + "'");
+	}
+
+	/** Incident, reopen and history screens every signed-in user can read (as the ZG manager). */
+	private List<String> incidentPages() {
+		long zg01 = siteId("ZG-01");
+		long reopened = logId("ZG-01", "2026-10-28");
+		long pending = logId("ST-01", "2026-10-27");
+		long reported = incidentId("Worker slipped on wet stairs");
+		return List.of("/incidents", "/incidents?status=UNDER_REVIEW", "/incidents?severity=CRITICAL",
+				"/incidents?status=CLOSED&severity=LOW", "/sites/" + zg01 + "/incidents",
+				"/sites/" + zg01 + "/incidents?severity=HIGH", "/sites/" + zg01 + "/incidents/new",
+				"/incidents/" + reported, "/incidents/" + reported + "/edit",
+				"/incidents/" + incidentId("Back strain while unloading blocks"),
+				"/incidents/" + incidentId("Fall from slab edge"),
+				"/incidents/" + incidentId("Electric shock from distribution board"),
+				"/incidents/" + incidentId("Scaffold tube dropped from level 4"),
+				"/incidents/" + incidentId("Crane load swung near workers"), "/daily-logs/" + reopened + "/history",
+				"/daily-logs/" + pending, "/daily-logs/" + pending + "/history");
+	}
+
+	/** Pages of the safety supervisor: corrective action form, reopen decision, sign-off. */
+	private List<String> supervisorPages() {
+		long fall = incidentId("Fall from slab edge");
+		long open = id("select id from corrective_action where incident_id = " + fall + " and status = 'OPEN'");
+		return List.of("/incidents/" + fall + "/corrective-actions/new",
+				"/incidents/" + fall + "/corrective-actions/" + open + "/edit",
+				"/incidents/" + incidentId("Scaffold tube dropped from level 4"),
+				"/daily-logs/" + logId("ST-01", "2026-10-27"), "/reopen-requests");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "en", "hr" })
+	void incidentReopenAndHistoryScreensRenderInBothLanguages(String lang) throws Exception {
+		for (String page : incidentPages()) {
+			assertRendersWithoutMissingKeys(page, lang, MANAGER);
+		}
+		for (String page : supervisorPages()) {
+			assertRendersWithoutMissingKeys(page, lang, SUPERVISOR);
+		}
+	}
+
+	@Test
+	void incidentListFiltersBySeverity() throws Exception {
+		mvc.perform(get("/incidents").param("severity", "CRITICAL"))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("Electric shock from distribution board")))
+			.andExpect(content().string(containsString("chip--severity-critical")))
+			.andExpect(content().string(not(containsString("Fall from slab edge"))));
+	}
+
+	@Test
+	void siteIncidentListHasTheSiteTabsAndTheEmptyFilterState() throws Exception {
+		long zg01 = siteId("ZG-01");
+		mvc.perform(get("/sites/{id}/incidents", zg01).param("status", "CLOSED"))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("class=\"tabs\"")))
+			.andExpect(content().string(containsString("No incident matches these filters.")))
+			.andExpect(content().string(containsString("href=\"/sites/" + zg01 + "/incidents\"")));
+	}
+
+	@Test
+	void highSeverityReportShowsTheRequiredInvestigationAndItsErrors() throws Exception {
+		mvc.perform(post("/sites/{id}/incidents", siteId("ZG-01")).with(csrf())
+				.param("title", "Fall from ladder").param("occurredAt", "2026-10-29T09:30")
+				.param("severity", "HIGH").param("category", "FALL_FROM_HEIGHT")
+				.param("description", "A worker fell from a step ladder."))
+			.andExpect(status().isOk())
+			.andExpect(view().name("incident/form"))
+			.andExpect(content().string(containsString("investigation--required")))
+			.andExpect(content().string(containsString("Investigation required")))
+			.andExpect(content().string(containsString("Root cause is required")))
+			.andExpect(content().string(containsString("Select Yes or No")));
+	}
+
+	@Test
+	void lowSeverityFormKeepsTheInvestigationOptional() throws Exception {
+		mvc.perform(get("/sites/{id}/incidents/new", siteId("ZG-01")))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("data-investigation")))
+			.andExpect(content().string(not(containsString("investigation--required"))));
+	}
+
+	@Test
+	@WithUserDetails(SUPERVISOR)
+	void highIncidentWithMissingFieldsListsThemAndDisablesSignOff() throws Exception {
+		long scaffold = incidentId("Scaffold tube dropped from level 4");
+		String html = mvc.perform(get("/incidents/{id}", scaffold))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("Complete the investigation before sign-off")))
+			.andExpect(content().string(containsString("Missing – required for High and Critical")))
+			.andReturn().getResponse().getContentAsString();
+		String form = html.substring(html.indexOf("/incidents/" + scaffold + "/sign-off"));
+		assertThat(form.substring(0, form.indexOf("</form>"))).contains("disabled");
+	}
+
+	@Test
+	void incidentDetailShowsTheStatusTimelineAndCorrectiveActions() throws Exception {
+		mvc.perform(get("/incidents/{id}", incidentId("Fall from slab edge")))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("Status timeline")))
+			.andExpect(content().string(containsString("Reinstall edge protection")))
+			.andExpect(content().string(containsString("chip--action-done")))
+			.andExpect(content().string(containsString("Corrective actions are still open")));
+	}
+
+	@Test
+	void reopenedLogShowsTheApprovedRequest() throws Exception {
+		mvc.perform(get("/daily-logs/{id}", logId("ZG-01", "2026-10-28")))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("Reopened for correction")))
+			.andExpect(content().string(containsString("Concrete pour hours were recorded for the wrong crew.")))
+			.andExpect(content().string(containsString("chip--reopen-approved")));
+	}
+
+	@Test
+	void pendingReopenIsShownToEveryoneAndTheLogStaysLocked() throws Exception {
+		mvc.perform(get("/daily-logs/{id}", logId("ST-01", "2026-10-27")))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("The signed record remains locked until this request is reviewed.")))
+			.andExpect(content().string(containsString("chip--reopen-pending")));
+	}
+
+	@Test
+	void emptyReopenReasonReopensTheModalWithTheError() throws Exception {
+		long signed = logId("ZG-01", "2026-10-26");
+		String version = String.valueOf(id("select version from daily_log where id = " + signed));
+		mvc.perform(post("/daily-logs/{id}/reopen-requests", signed).with(csrf())
+				.param("version", version).param("reason", ""))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString("id=\"reopen-modal\"")))
+			.andExpect(content().string(containsString("data-open-on-load=\"true\"")))
+			.andExpect(content().string(containsString("Request to reopen log")));
 	}
 
 	@ParameterizedTest

@@ -76,7 +76,21 @@ class RoleAccessMatrixTests {
 
 	/** Seed ids, looked up once per case (the ids depend on the sequence, never hard-coded). */
 	record Ids(long zg01, long st01, long zgDraftLog, long zgDraftLogVersion, long zg02,
-			long managerZg, long inspector, long crew) {
+			long managerZg, long inspector, long crew, Incidents incidents, Reopens reopens) {
+	}
+
+	/**
+	 * Seed incidents used by the M3-06 rows: a LOW REPORTED one on ZG-01, the HIGH UNDER_REVIEW one
+	 * on ST-01 (its AR2 fields are filled in {@link #loadSeedIds}, inside the rolled-back
+	 * transaction, so a sign-off can succeed), the HIGH SIGNED_OFF one on ZG-01, and the MEDIUM
+	 * ZG-02 one with an OPEN action assigned to {@code manager@}.
+	 */
+	record Incidents(long zgLow, long zgLowVersion, long stHigh, long stHighVersion, long zgSigned,
+			long zgSignedVersion, long backStrain, long backStrainVersion, long backStrainAction) {
+	}
+
+	/** A ZG-01 log signed off without any reopen request, and the PENDING request of ST-01. */
+	record Reopens(long zgSignedLog, long zgSignedLogVersion, long stPendingLog, long stPendingRequest) {
 	}
 
 	@BeforeEach
@@ -89,7 +103,29 @@ class RoleAccessMatrixTests {
 				id("select id from site where code = 'ZG-02'"),
 				id("select id from app_user where email = '" + MANAGER_ZG + "'"),
 				id("select id from app_user where email = '" + INSPECTOR + "'"),
-				id("select min(id) from crew where active"));
+				id("select min(id) from crew where active"), seedIncidents(), seedReopens());
+	}
+
+	private Incidents seedIncidents() {
+		long stHigh = id("select id from incident where title = 'Scaffold tube dropped from level 4'");
+		jdbc.update("update incident set root_cause = 'Toe board missing', medical_treatment = 'None', "
+				+ "authority_notified = false where id = ?", stHigh);
+		long zgLow = id("select id from incident where title = 'Worker slipped on wet stairs'");
+		long zgSigned = id("select id from incident where title = 'Fall from slab edge'");
+		long backStrain = id("select id from incident where title = 'Back strain while unloading blocks'");
+		return new Incidents(zgLow, id("select version from incident where id = " + zgLow), stHigh,
+				id("select version from incident where id = " + stHigh), zgSigned,
+				id("select version from incident where id = " + zgSigned), backStrain,
+				id("select version from incident where id = " + backStrain),
+				id("select id from corrective_action where incident_id = " + backStrain + " and status = 'OPEN'"));
+	}
+
+	private Reopens seedReopens() {
+		long zgSignedLog = id("select dl.id from daily_log dl join site s on s.id = dl.site_id "
+				+ "where s.code = 'ZG-01' and dl.log_date = date '2026-10-26'");
+		long stPendingRequest = id("select id from log_reopen_request where status = 'PENDING'");
+		return new Reopens(zgSignedLog, id("select version from daily_log where id = " + zgSignedLog),
+				id("select daily_log_id from log_reopen_request where id = " + stPendingRequest), stPendingRequest);
 	}
 
 	/** The endpoints of the matrix, each with the users that may call it. */
@@ -110,6 +146,16 @@ class RoleAccessMatrixTests {
 		ADMIN_USER_LIST(GET, Set.of(ADMIN), ids -> get("/admin/users")),
 		NOTIFICATION_LIST(GET, EVERYONE, ids -> get("/notifications")),
 		PROFILE(GET, EVERYONE, ids -> get("/profile")),
+		INCIDENT_LIST(GET, EVERYONE, ids -> get("/incidents")),
+		SITE_INCIDENT_LIST(GET, EVERYONE, ids -> get("/sites/{id}/incidents", ids.zg01())),
+		INCIDENT_DETAIL(GET, EVERYONE, ids -> get("/incidents/{id}", ids.incidents().stHigh())),
+		INCIDENT_NEW_FORM(GET, Set.of(MANAGER_ZG), ids -> get("/sites/{id}/incidents/new", ids.zg01())),
+		INCIDENT_EDIT_FORM(GET, Set.of(MANAGER_ZG, SUPERVISOR), ids -> get("/incidents/{id}/edit", ids.incidents().zgLow())),
+		CORRECTIVE_ACTION_NEW_FORM(GET, Set.of(SUPERVISOR),
+				ids -> get("/incidents/{id}/corrective-actions/new", ids.incidents().zgSigned())),
+		/** The queue is the supervisor's work list only (decided 24/11). */
+		REOPEN_QUEUE(GET, Set.of(SUPERVISOR), ids -> get("/reopen-requests")),
+		DAILY_LOG_HISTORY(GET, EVERYONE, ids -> get("/daily-logs/{id}/history", ids.reopens().zgSignedLog())),
 
 		// ---------------------------------------------------------------- actions (POST + CSRF)
 		SITE_CREATE(POST, Set.of(ADMIN), ids -> post("/sites")
@@ -128,7 +174,28 @@ class RoleAccessMatrixTests {
 			.param("logVersion", String.valueOf(ids.zgDraftLogVersion()))
 			.param("description", "Matrix work entry").param("startTime", "07:00").param("endTime", "09:00")),
 		USER_DEACTIVATE(POST, Set.of(ADMIN), ids -> post("/admin/users/{id}/deactivate", ids.inspector())),
-		NOTIFICATIONS_READ_ALL(POST, EVERYONE, ids -> post("/notifications/read-all"));
+		NOTIFICATIONS_READ_ALL(POST, EVERYONE, ids -> post("/notifications/read-all")),
+		INCIDENT_REPORT(POST, Set.of(MANAGER_ZG), ids -> post("/sites/{id}/incidents", ids.zg01())
+			.param("title", "Matrix incident").param("description", "Matrix").param("occurredAt", "2026-11-02T09:00")
+			.param("severity", "LOW").param("category", "NEAR_MISS")),
+		INCIDENT_START_REVIEW(POST, Set.of(MANAGER_ZG, SUPERVISOR), ids -> post("/incidents/{id}/start-review",
+				ids.incidents().zgLow()).param("version", String.valueOf(ids.incidents().zgLowVersion()))),
+		/** AR2: a HIGH incident is signed off only by the safety supervisor - even its own site's manager gets 403. */
+		INCIDENT_SIGN_OFF_HIGH(POST, Set.of(SUPERVISOR), ids -> post("/incidents/{id}/sign-off",
+				ids.incidents().stHigh()).param("version", String.valueOf(ids.incidents().stHighVersion()))),
+		CORRECTIVE_ACTION_CREATE(POST, Set.of(SUPERVISOR), ids -> post("/incidents/{id}/corrective-actions",
+				ids.incidents().zgSigned()).param("description", "Matrix action").param("dueDate", "2027-01-15")
+			.param("incidentVersion", String.valueOf(ids.incidents().zgSignedVersion()))),
+		/** Mark as done: the supervisor, or the action's assignee (manager@). */
+		CORRECTIVE_ACTION_DONE(POST, Set.of(SUPERVISOR, MANAGER_ZG), ids -> post(
+				"/incidents/{id}/corrective-actions/{a}/done", ids.incidents().backStrain(),
+				ids.incidents().backStrainAction()).param("version", String.valueOf(ids.incidents().backStrainVersion()))),
+		REOPEN_REQUEST(POST, Set.of(MANAGER_ZG), ids -> post("/daily-logs/{id}/reopen-requests", ids.reopens().zgSignedLog())
+			.param("reason", "Matrix reason").param("version", String.valueOf(ids.reopens().zgSignedLogVersion()))),
+		REOPEN_APPROVE(POST, Set.of(SUPERVISOR), ids -> post("/daily-logs/{id}/reopen-requests/{r}/approve",
+				ids.reopens().stPendingLog(), ids.reopens().stPendingRequest())),
+		REOPEN_REJECT(POST, Set.of(SUPERVISOR), ids -> post("/daily-logs/{id}/reopen-requests/{r}/reject",
+				ids.reopens().stPendingLog(), ids.reopens().stPendingRequest()).param("reason", "Matrix rejection"));
 
 		final HttpMethod method;
 
