@@ -12,6 +12,9 @@ import hr.algebra.sitelog.incident.domain.CorrectiveActionStatus;
 
 public interface CorrectiveActionRepository extends JpaRepository<CorrectiveAction, Long> {
 
+	/** "Mark as done" by the assignee ({@code IncidentAccess#isAssignee}). */
+	boolean existsByIdAndAssignee_Id(Long actionId, Long assigneeId);
+
 	/** Site KPI: corrective actions still to do (OPEN or OVERDUE) on a site's incidents. */
 	long countByIncident_Site_IdAndStatusIn(Long siteId, Collection<CorrectiveActionStatus> statuses);
 
