@@ -229,85 +229,63 @@ I gave Claude Code specific drafting tasks with requirements I could verify in t
 - **Tests.** I checked that the service tests exercise the confirmed business rules and that the controller tests cover PRG, validation, conflicts, and not-found responses.
 - **Documentation.** I checked that the architecture, database schema, and domain model pages match migrations V1–V6 and the current packages.
 
-Week 9 — M3: Security, Roles, User Administration, and Deployment Setup
+## Week 9 — M3: Security, Roles, User Administration, and Deployment Setup
 
-My decisions and work
+### My decisions and work
 
 This week, I replaced the fixed M2 user with authentication and authorization, introduced user administration, and prepared the application for production deployment. My main focus was ensuring that security requirements were consistently enforced across the application while maintaining a scalable and maintainable architecture.
 
-Security architecture. I designed a two-layer authorization mechanism, placing business-level permissions in the services through @PreAuthorize so they can also be reused by the future REST API. I used the SecurityFilterChain for public paths, administrative endpoints, and crew forms. I separated @EnableMethodSecurity into a dedicated MethodSecurityConfig to avoid interference with @WebMvcTest slices.
+- **Security architecture.** I designed a two-layer authorization mechanism, placing business-level permissions in the services through `@PreAuthorize` so they can also be reused by the future REST API. I used the `SecurityFilterChain` for public paths, administrative endpoints, and crew forms. I separated `@EnableMethodSecurity` into a dedicated `MethodSecurityConfig` to avoid interference with `@WebMvcTest` slices.
+- **Site ownership.** I established that site managers can modify daily logs, work entries, and crew rows only within their assigned sites. I introduced a dedicated `SiteAccess` bean to centralize ownership verification and decided that unknown identifiers should reach the resource lookup, ensuring that missing resources return 404 rather than a misleading 403.
+- **Authorization model.** I analysed the role descriptions and established a restrictive permission model based on the principle of least privilege. Admins cannot write daily logs, authenticated users can read all sites, Safety Supervisors and Inspectors remain read-only until their workflows are implemented, and users are deactivated rather than deleted. I documented these assumptions as provisional and scheduled their reassessment for week 10.
+- **Authentication and user administration.** I defined the account lifecycle, authentication behaviour, and validation requirements. Inactive accounts cannot authenticate, administrators cannot deactivate their own accounts or modify their own roles, and each site must have exactly one manager. I established password requirements of at least 12 characters and a maximum of 72 bytes, respecting BCrypt's input limit. I also incorporated the user's preferred language into the login workflow.
+- **Deployment strategy.** I evaluated deployment alternatives and selected a Render Blueprint (`render.yaml`) to version the infrastructure configuration alongside the application. I chose a multi-stage Dockerfile to ensure consistency between local and production environments. For database connectivity, I selected the Supabase session pooler with mandatory TLS, considering the IPv6 limitation of the direct connection and the prepared-statement limitations of the transaction pooler.
+- **User interface.** I reviewed the login, profile, and user administration screens against the high-fidelity Figma frames, evaluated their consistency with the original designs, and documented the deviations and their respective justifications in the README.
 
-Site ownership. I established that site managers can modify daily logs, work entries, and crew rows only within their assigned sites. I introduced a dedicated SiteAccess bean to centralize ownership verification and decided that unknown identifiers should reach the resource lookup, ensuring that missing resources return 404 rather than a misleading 403.
-
-Authorization model. I analysed the role descriptions and established a restrictive permission model based on the principle of least privilege. Admins cannot write daily logs, authenticated users can read all sites, Safety Supervisors and Inspectors remain read-only until their workflows are implemented, and users are deactivated rather than deleted. I documented these assumptions as provisional and scheduled their reassessment for week 10.
-
-Authentication and user administration. I defined the account lifecycle, authentication behaviour, and validation requirements. Inactive accounts cannot authenticate, administrators cannot deactivate their own accounts or modify their own roles, and each site must have exactly one manager. I established password requirements of at least 12 characters and a maximum of 72 bytes, respecting BCrypt's input limit. I also incorporated the user's preferred language into the login workflow.
-
-Deployment strategy. I evaluated deployment alternatives and selected a Render Blueprint (render.yaml) to version the infrastructure configuration alongside the application. I chose a multi-stage Dockerfile to ensure consistency between local and production environments. For database connectivity, I selected the Supabase session pooler with mandatory TLS, considering the IPv6 limitation of the direct connection and the prepared-statement limitations of the transaction pooler.
-
-User interface. I reviewed the login, profile, and user administration screens against the high-fidelity Figma frames, evaluated their consistency with the original designs, and documented the deviations and their respective justifications in the README.
-
-Where AI assisted
+### Where AI assisted
 
 I used Claude Code selectively to reduce repetitive development effort, working from the technical requirements and implementation constraints I had already established.
 
-Boilerplate and implementation support. AI assisted with initial code drafts, standard Spring Security patterns, repetitive authorization annotations, form structures, and Thymeleaf templates.
-
-Test automation. AI helped generate repetitive HTTP test cases based on my permission matrix, endpoint definitions, and expected results.
-
-Configuration and benchmarking. AI assisted with configuration file syntax, container setup drafts, and the execution and collection of startup performance measurements.
-
-Documentation refinement. AI helped improve the wording, formatting, and organization of technical documentation.
+- **Boilerplate and implementation support.** AI assisted with initial code drafts, standard Spring Security patterns, repetitive authorization annotations, form structures, and Thymeleaf templates.
+- **Test automation.** AI helped generate repetitive HTTP test cases based on my permission matrix, endpoint definitions, and expected results.
+- **Configuration and benchmarking.** AI assisted with configuration file syntax, container setup drafts, and the execution and collection of startup performance measurements.
+- **Documentation refinement.** AI helped improve the wording, formatting, and organization of technical documentation.
 
 I reviewed the generated contributions, adapted them where necessary, and verified their behaviour before incorporating them into the project.
 
-What I reviewed and corrected
+### What I reviewed and corrected
 
 During implementation and testing, I identified several issues that required technical investigation and adjustments.
 
-Incomplete authorization of creation forms. I identified that protecting save operations was insufficient because unauthorized users could still access the creation forms. I extended the authorization mechanism to SiteService.getSummaryForNewLog and restricted crew forms and POST requests to administrators, ensuring consistent access control throughout the workflow.
+- **Incomplete authorization of creation forms.** I identified that protecting save operations was insufficient because unauthorized users could still access the creation forms. I extended the authorization mechanism to `SiteService.getSummaryForNewLog` and restricted crew forms and POST requests to administrators, ensuring consistent access control throughout the workflow.
+- **Duplicate password validation messages.** I identified that empty password fields triggered both required-field and minimum-length errors. I resolved this by introducing a composed `@PasswordLength` constraint with `@ReportAsSingleViolation`, ensuring that each field displays a single validation message.
+- **Thymeleaf security restrictions.** I investigated an incompatibility between the login template and Thymeleaf 3.1's restrictions on accessing request parameters inside `th:attr`. I corrected the implementation by computing the condition through `th:with` and reusing the resulting variable.
+- **Production startup performance.** I analysed the application's startup behaviour under Render's free-tier resource constraints of 0.1 CPU and 512 MB of memory. The initial startup time was 349 seconds. I selected the JVM options `-XX:TieredStopAtLevel=1` and `-XX:+UseSerialGC`, reducing startup time to 168 seconds, an improvement of approximately 52%. I documented the resulting trade-off between startup performance and peak throughput.
 
-Duplicate password validation messages. I identified that empty password fields triggered both required-field and minimum-length errors. I resolved this by introducing a composed @PasswordLength constraint with @ReportAsSingleViolation, ensuring that each field displays a single validation message.
-
-Thymeleaf security restrictions. I investigated an incompatibility between the login template and Thymeleaf 3.1's restrictions on accessing request parameters inside th:attr. I corrected the implementation by computing the condition through th:with and reusing the resulting variable.
-
-Production startup performance. I analysed the application's startup behaviour under Render's free-tier resource constraints of 0.1 CPU and 512 MB of memory. The initial startup time was 349 seconds. I selected the JVM options -XX:TieredStopAtLevel=1 and -XX:+UseSerialGC, reducing startup time to 168 seconds, an improvement of approximately 52%. I documented the resulting trade-off between startup performance and peak throughput.
-
-What I verified
+### What I verified
 
 I established the acceptance criteria and validated the implementation through automated tests, integration tests, and deployment checks.
 
-Executed ./mvnw clean verify against PostgreSQL 17 using Testcontainers, obtaining 689 tests with zero failures.
+- Executed `./mvnw clean verify` against PostgreSQL 17 using Testcontainers, obtaining 689 tests with zero failures.
+- Achieved at least 99% line coverage in every service package and 93% overall coverage.
+- Validated the permission matrix across more than 20 endpoints using all five demonstration accounts and anonymous access.
+- Confirmed that unauthorized requests return 403 responses without modifying database records.
+- Verified CSRF protection, inactive account restrictions, logout behaviour, session fixation protection, and localized error messages.
+- Built and executed the application and database using a single `docker compose up` command.
+- Confirmed that the production image contains no `.env` file and that `/actuator/health` is the only exposed Actuator endpoint.
+- Verified that the documentation site builds successfully with strict broken-link validation enabled.
 
-Achieved at least 99% line coverage in every service package and 93% overall coverage.
-
-Validated the permission matrix across more than 20 endpoints using all five demonstration accounts and anonymous access.
-
-Confirmed that unauthorized requests return 403 responses without modifying database records.
-
-Verified CSRF protection, inactive account restrictions, logout behaviour, session fixation protection, and localized error messages.
-
-Built and executed the application and database using a single docker compose up command.
-
-Confirmed that the production image contains no .env file and that /actuator/health is the only exposed Actuator endpoint.
-
-Verified that the documentation site builds successfully with strict broken-link validation enabled.
-
-Representative AI prompts (summarised)
+### Representative AI prompts (summarised)
 
 I used focused prompts to accelerate specific implementation tasks without delegating the underlying technical decisions.
 
-Implementation support. Provide standard Spring Security implementation patterns following my predefined authentication requirements, permission rules, and account restrictions.
+1. **Implementation support.** Provide standard Spring Security implementation patterns following my predefined authentication requirements, permission rules, and account restrictions.
+2. **Test automation.** Generate repetitive HTTP test cases using my permission matrix and expected results. Include valid request bodies and CSRF tokens to isolate authorization behaviour.
+3. **Deployment configuration.** Assist with the configuration syntax for my selected deployment architecture, respecting environment variable requirements, container security constraints, and production resource limits.
+4. **Performance measurement.** Execute the container startup benchmark under the specified CPU and memory constraints and report the measured startup time.
+5. **Documentation refinement.** Improve the clarity and formatting of the technical documentation without changing the architectural decisions or their justifications.
 
-Test automation. Generate repetitive HTTP test cases using my permission matrix and expected results. Include valid request bodies and CSRF tokens to isolate authorization behaviour.
-
-Deployment configuration. Assist with the configuration syntax for my selected deployment architecture, respecting environment variable requirements, container security constraints, and production resource limits.
-
-Performance measurement. Execute the container startup benchmark under the specified CPU and memory constraints and report the measured startup time.
-
-Documentation refinement. Improve the clarity and formatting of the technical documentation without changing the architectural decisions or their justifications.
-
-Review outcome
+### Review outcome
 
 By the end of the week, I had established a validated security architecture, a functional user administration workflow, and a reproducible deployment setup.
 
@@ -316,3 +294,110 @@ I reviewed the authorization expressions against the permission matrix, confirme
 The provisional authorization rules remain documented for reassessment during the implementation of the week 10 workflows.
 
 My use of AI followed a targeted approach: I delegated repetitive coding patterns, test generation, configuration assistance, and documentation refinement while retaining responsibility for architectural decisions, business logic, technical problem-solving, integration, and final validation. This allowed me to improve development efficiency while maintaining technical ownership and accountability for the delivered solution.
+
+## Week 10 (done early, 24–25 Nov 2026) — M3: REST API, Audited Reopen, Incident Workflow, and Domain Action Aspect
+
+### My decisions and work
+
+This week, I developed the REST API of the aggregate and the two advanced M3 workflows: the audited reopening of signed-off daily logs (AR1) and the incident severity workflow with corrective actions (AR2). I also finalized the authorization model established provisionally in week 9, focusing on consistency between business rules, security, data integrity, and API behaviour.
+
+- **Authorization model.** I finalized the permission model on 2026-11-24, applying the principle of least privilege. I established that administrators manage sites, crews, and users without writing logs or incidents. Authenticated users can read records, while Site Managers can write logs, sign them off, request reopens, and report incidents only within their assigned sites. I restricted reopen decisions, `HIGH` / `CRITICAL` incident sign-offs, and corrective action management to the Safety Supervisor. Inspectors remain read-only, and user accounts are deactivated rather than deleted.
+
+- **Incident workflow.** I defined the incident lifecycle, state transitions, severity restrictions, and editing permissions. Site Managers can review, sign off, and close `LOW` / `MEDIUM` incidents within their assigned sites, while only the Safety Supervisor can lower `HIGH` / `CRITICAL` severity levels. I restricted editing according to the incident state and established that only reported incidents without corrective actions can be deleted. I also required all corrective actions to be `DONE` before an incident can be closed.
+
+- **Business validation and data integrity.** I established that the four mandatory AR2 fields must be validated during reporting, editing, and sign-off, with the V3 database `CHECK` constraint providing an additional integrity guarantee. For corrective actions, I defined eligible assignees, due-date restrictions, and completion permissions. I deliberately reserved the automatic `OVERDUE` status for the M4 scheduled job.
+
+- **Audited reopen workflow.** I designed the approval and rejection rules, allowing an optional note for approval while requiring a justification for rejection. To prevent inconsistent decisions caused by concurrent requests, I selected pessimistic locking through `SELECT ... FOR UPDATE`.
+
+- **REST API architecture.** I designed the API to reuse the existing service layer, authorization rules, and session authentication. I retained CSRF protection through `GET /api/v1/csrf` and the `X-CSRF-TOKEN` header. I evaluated and rejected `CookieCsrfTokenRepository` because it would modify token storage across the existing screens and expose the token to scripts.
+
+- **API conventions and error handling.** I established consistent REST conventions, including workflow transitions as `POST` requests on sub-resources, optimistic locking through a version field in the request body, and HTTP 409 for version conflicts. I selected bounded pagination, validation of sorting properties, and RFC 9457 `ProblemDetail` responses for API errors, including authentication and authorization failures.
+
+- **Domain audit architecture.** I designed the third audit layer using the `@AuditedAction` annotation and a domain aspect. I defined the events, recorded fields, and possible outcomes, covering sign-offs, reopen decisions, incident transitions, and corrective action changes. I positioned the aspect as the outermost advice to capture authorization failures and transaction commit failures. I also established an append-only audit table through migration V7, maintaining consistency with the existing Envers audit tables.
+
+- **User interface.** I reviewed the incident list, incident form and detail, corrective action form, daily log reopen states, revision history, and supervisor's reopen queue against the high-fidelity Figma frames. I evaluated and documented each deviation and its justification in the README.
+
+### Where AI assisted
+
+I used Claude Code selectively to accelerate implementation tasks based on the architecture, business rules, and technical conventions I had already established.
+
+- **Boilerplate and implementation support.** AI assisted with initial code drafts for REST controllers, request and response records, workflow services, authorization annotations, audit components, and repetitive Thymeleaf structures, following my predefined specifications.
+
+- **Test automation.** AI helped generate repetitive controller and service test cases from the scenarios, permission rules, state transitions, and expected results I defined.
+
+- **Technical syntax and consistency.** AI assisted with OpenAPI annotations, database migration syntax, localized message keys, and recurring implementation patterns across the new components.
+
+- **Documentation refinement.** AI helped improve the wording, formatting, and organization of the architecture, database, and domain model documentation.
+
+I reviewed the generated contributions against the business requirements, adapted the implementation where necessary, and verified the results through the automated test suite.
+
+### What I reviewed and corrected
+
+During implementation and integration testing, I identified several issues involving Spring AOP, security configuration, authorization, template processing, and localization.
+
+- **Aspect binding at the highest precedence.** I investigated the `JoinPointMatch was NOT bound` error that occurred when the audit aspect was positioned as the outermost advice. I identified that annotation argument binding depended on Spring's `ExposeInvocationInterceptor` running first. I resolved the issue by retrieving the annotation directly from the intercepted method through reflection, preserving the required advice order.
+
+- **Thymeleaf preprocessing.** I identified that expressions containing `__` were interpreted as Thymeleaf preprocessing, breaking the incident status timeline. I corrected the implementation by introducing the CSS classes `is-current` and `is-done`, maintaining the intended visual behaviour without conflicting with template processing.
+
+- **Authentication behaviour across API and screens.** I identified that registering the API entry point through `defaultAuthenticationEntryPointFor` caused some screen requests to return HTTP 401 instead of redirecting users to the login page. I redesigned the error-handling configuration using a single authentication entry point and access-denied handler that distinguish requests by path. API requests receive JSON responses, while screen requests retain login redirects and HTML 403 pages.
+
+- **Unauthorized access to the reopen queue.** I identified an inconsistency between the confirmed permission model and the implementation: pending reopen requests were accessible to all authenticated users. I corrected the service-level authorization through `@PreAuthorize`, restricting the queue to the Safety Supervisor.
+
+- **Revision history localization.** I identified that the revision history displayed raw numerical values and ISO-formatted dates. I adjusted the presentation layer to format values according to the reader's preferred language while preserving typed JSON values in the REST API.
+
+- **Incident conflict messages.** I identified that incident version conflicts reused the daily log's error message. I introduced a dedicated message key for the incident aggregate, improving the accuracy and consistency of error reporting.
+
+### What I verified
+
+I established the validation criteria and verified the implementation through automated tests, real HTTP integration tests, and documentation checks.
+
+- Executed `./mvnw clean verify` against PostgreSQL 17 using Testcontainers, obtaining **1,082 tests, 0 failures, 0 errors, and 0 skipped tests**.
+
+- Achieved **99.6% line coverage across the service packages**, with each service package reaching at least 99.3%, and **97.8% overall line coverage**, as reported by JaCoCo in `docs/jacoco/`.
+
+- Validated the complete `HIGH` severity incident workflow through `RestApiHttpTests` on a real server, confirming the following expected behaviour:
+  - Reporting without the four mandatory AR2 fields returns 422.
+  - Reporting with the required fields returns 201.
+  - Starting the review returns 200.
+  - Attempting sign-off as a Site Manager returns 403.
+  - Signing off as the Safety Supervisor returns 200.
+  - Attempting to close an incident with an open corrective action returns 409.
+  - Closing the incident after completing the corrective action returns 200.
+
+- Verified that unauthenticated API requests return HTTP 401 while unauthenticated screen requests continue to redirect to `/login`.
+
+- Confirmed that requests without the required CSRF header return HTTP 403 and that the OpenAPI documentation is accessible only to authenticated users.
+
+- Verified that the documentation site builds successfully with strict broken-link validation enabled.
+
+### Representative AI prompts (summarised)
+
+I used focused prompts to accelerate implementation and reduce repetitive work, providing the technical decisions, constraints, and expected behaviour beforehand.
+
+1. **REST implementation support.** Assist with controller and DTO structures for the existing service commands, following my REST conventions, response status codes, resource locations, and version-handling strategy.
+
+2. **Workflow implementation support.** Assist with initial service method drafts and authorization annotations based on my predefined incident, corrective action, and reopen rules, including state restrictions and concurrency requirements.
+
+3. **Audit and configuration support.** Assist with the Spring AOP structure, annotation handling, audit persistence, and API security configuration according to my specified advice order, recorded fields, and authentication requirements.
+
+4. **Test automation.** Generate repetitive HTTP and service test cases using my predefined permission matrix, workflow scenarios, expected status codes, and validation requirements.
+
+5. **Technical documentation.** Improve the consistency and readability of the OpenAPI annotations, architecture documentation, and database descriptions without modifying the established technical decisions.
+
+### Review outcome
+
+- **Authorization.** I reviewed the `@PreAuthorize` expressions against the finalized permission matrix and confirmed that the screens and REST API consistently enforce the same service-level authorization rules.
+
+- **Workflows.** I validated the incident lifecycle, corrective action requirements, reopen decisions, concurrency protection, and database integrity constraints against the established business requirements.
+
+- **REST API.** I confirmed that the response status codes, `ProblemDetail` structures, validation behaviour, and authentication mechanisms follow the API conventions while preserving the existing screen behaviour.
+
+- **Domain aspect.** I verified the intercepted methods, advice execution order, and recorded outcomes, confirming that authorization failures and transaction failures are captured without modifying the original operation's result.
+
+- **Technical corrections.** I confirmed that the identified integration, security, localization, and template-processing issues were resolved and covered by the test suite.
+
+- **Documentation.** I reviewed the architecture, database schema, domain model, ADR-0003, and README to ensure consistency with migration V7 and the current application structure.
+
+By the end of the week, I had completed the advanced M3 workflows, finalized the authorization model, and established a consistent REST API and domain audit architecture.
+
+AI assistance was used to reduce repetitive implementation effort and accelerate test generation and documentation. The architectural decisions, business rules, security requirements, technical investigations, corrective decisions, integration, and final validation remained under my responsibility.
