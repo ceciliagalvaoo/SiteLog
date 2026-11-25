@@ -90,6 +90,12 @@ public interface DailyLogRepository extends JpaRepository<DailyLog, Long> {
 
 	boolean existsBySite_IdAndLogDateAndIdNot(Long siteId, LocalDate logDate, Long id);
 
+	/** Daily log choices of the incident form: the site's latest logs, newest first. */
+	List<DailyLog> findTop60BySite_IdOrderByLogDateDesc(Long siteId);
+
+	/** Incident rule: the linked daily log must belong to the incident's site. */
+	boolean existsByIdAndSite_Id(Long dailyLogId, Long siteId);
+
 	/** Delete rule for sites: a site with daily logs cannot be deleted. */
 	boolean existsBySite_Id(Long siteId);
 

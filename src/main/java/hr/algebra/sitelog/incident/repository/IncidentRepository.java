@@ -6,16 +6,27 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import hr.algebra.sitelog.incident.domain.Incident;
 import hr.algebra.sitelog.incident.domain.IncidentStatus;
+import hr.algebra.sitelog.incident.domain.Severity;
 import jakarta.persistence.LockModeType;
 
-public interface IncidentRepository extends JpaRepository<Incident, Long> {
+public interface IncidentRepository extends JpaRepository<Incident, Long>, JpaSpecificationExecutor<Incident> {
+
+	/**
+	 * Filtered incident list (site, status, severity - each optional, combined by
+	 * {@code IncidentService}) with the to-one data shown on each row in the same query.
+	 */
+	@Override
+	@EntityGraph(attributePaths = { "site", "reportedBy" })
+	Page<Incident> findAll(Specification<Incident> specification, Pageable pageable);
 
 	/** Incident list of a site with the to-one data shown on each row. */
 	@EntityGraph(attributePaths = { "site", "reportedBy" })
@@ -46,6 +57,14 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
 	@Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
 	@Query("select i from Incident i where i.id = :id")
 	Optional<Incident> findForChildUpdateById(@Param("id") Long id);
+
+	// ---- authorization (IncidentAccess) ----
+
+	/** "Own site": is this user the manager of the incident's site? */
+	boolean existsByIdAndSite_Manager_Id(Long incidentId, Long managerId);
+
+	/** "Own site and low severity": the site manager may handle LOW / MEDIUM incidents of his or her site. */
+	boolean existsByIdAndSite_Manager_IdAndSeverityIn(Long incidentId, Long managerId, Collection<Severity> severities);
 
 	// ---- delete rules ----
 

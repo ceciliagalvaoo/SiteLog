@@ -19,8 +19,10 @@ import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
 import hr.algebra.sitelog.common.exception.DomainException;
 import hr.algebra.sitelog.common.exception.InvalidTransitionException;
 import hr.algebra.sitelog.common.exception.LogLockedException;
+import hr.algebra.sitelog.common.exception.MissingSeverityFieldsException;
 import hr.algebra.sitelog.common.exception.NotFoundException;
 import hr.algebra.sitelog.dailylog.domain.DailyLog;
+import hr.algebra.sitelog.incident.domain.Incident;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
@@ -31,7 +33,8 @@ import jakarta.servlet.http.HttpServletRequest;
  * <li>Stale version / concurrent commit -> <b>409</b> page {@code error/409} with the flash
  * "This daily log was changed by someone else. Reload and try again." and a reload link.</li>
  * <li>Locked (signed-off) log -> redirect to the log detail with an error flash (PRG).</li>
- * <li>Invalid workflow step, refused delete -> redirect back with an error flash.</li>
+ * <li>Invalid workflow step, refused delete, HIGH / CRITICAL incident missing its required
+ * fields at a workflow step (AR2) -> redirect back with an error flash.</li>
  * <li>Not found -> <b>404</b> page {@code error/404}.</li>
  * <li>Database rule caught only by a constraint or the lock trigger -> <b>409</b> page.</li>
  * </ul>
@@ -45,6 +48,8 @@ public class WebExceptionHandler {
 	static final String NOT_FOUND_VIEW = "error/404";
 
 	static final String CONFLICT_KEY = "dailyLog.flash.conflict";
+
+	static final String INCIDENT_CONFLICT_KEY = "incident.flash.conflict";
 
 	static final String LOCKED_KEY = "dailyLog.flash.locked";
 
@@ -60,10 +65,13 @@ public class WebExceptionHandler {
 
 	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
 	public ModelAndView optimisticLock(ObjectOptimisticLockingFailureException ex, HttpServletRequest request) {
+		LOG.info("Optimistic lock conflict on {} {}", ex.getPersistentClassName(), ex.getIdentifier());
+		if (Incident.class.getName().equals(ex.getPersistentClassName()) && ex.getIdentifier() != null) {
+			return conflictPage(INCIDENT_CONFLICT_KEY, "/incidents/" + ex.getIdentifier());
+		}
 		String reloadUrl = DailyLog.class.getName().equals(ex.getPersistentClassName()) && ex.getIdentifier() != null
 				? "/daily-logs/" + ex.getIdentifier()
 				: refererOr(request, "/sites");
-		LOG.info("Optimistic lock conflict on {} {}", ex.getPersistentClassName(), ex.getIdentifier());
 		return conflictPage(CONFLICT_KEY, reloadUrl);
 	}
 
@@ -73,7 +81,8 @@ public class WebExceptionHandler {
 		return "redirect:/daily-logs/" + ex.getDailyLogId();
 	}
 
-	@ExceptionHandler({ InvalidTransitionException.class, DeletionNotAllowedException.class })
+	@ExceptionHandler({ InvalidTransitionException.class, DeletionNotAllowedException.class,
+			MissingSeverityFieldsException.class })
 	public String businessRule(DomainException ex, HttpServletRequest request,
 			RedirectAttributes redirect) {
 		Flash.error(redirect, ex.getMessageKey(), ex.getArgs());
