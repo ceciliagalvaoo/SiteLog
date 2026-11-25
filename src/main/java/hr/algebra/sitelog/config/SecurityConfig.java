@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.LocaleResolver;
 
+import hr.algebra.sitelog.api.security.ApiRequests;
+import hr.algebra.sitelog.api.security.ApiSecurityHandlers;
 import hr.algebra.sitelog.user.security.PreferredLanguageLoginSuccessHandler;
 
 /**
@@ -46,6 +48,8 @@ public class SecurityConfig {
 				// static assets of the layout (also needed by the login page)
 				.requestMatchers("/css/**", "/js/**", "/img/**", "/favicon.ico").permitAll()
 				.requestMatchers(LOGIN_PAGE, "/error").permitAll()
+				// REST clients need a CSRF token before they can POST /login
+				.requestMatchers(HttpMethod.GET, ApiRequests.CSRF_TOKEN_PATH).permitAll()
 				.requestMatchers("/admin/**").hasRole("ADMIN")
 				// crew forms and crew writes: refused before binding/validation, so a non-admin never
 				// sees the form (not even re-rendered with errors); the service checks the writes again
@@ -64,7 +68,11 @@ public class SecurityConfig {
 				.logoutSuccessUrl(LOGIN_PAGE + "?logout")
 				.invalidateHttpSession(true)
 				.deleteCookies("JSESSIONID")
-				.permitAll());
+				.permitAll())
+			// /api/**: 401 / 403 as ProblemDetail instead of the login redirect and the HTML error page
+			.exceptionHandling(ex -> ex
+				.authenticationEntryPoint(ApiSecurityHandlers.authenticationEntryPoint(LOGIN_PAGE))
+				.accessDeniedHandler(ApiSecurityHandlers.accessDeniedHandler()));
 		return http.build();
 	}
 

@@ -15,6 +15,7 @@
 	<description>Construction site logs and safety</description>
 	<properties>
 		<java.version>25</java.version>
+		<springdoc.version>3.2.0</springdoc.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -56,6 +57,15 @@
 		<dependency>
 			<groupId>org.thymeleaf.extras</groupId>
 			<artifactId>thymeleaf-extras-springsecurity6</artifactId>
+		</dependency>
+		<!--
+			OpenAPI 3.1 document (/v3/api-docs) and Swagger UI (/swagger-ui.html) for the REST API.
+			Not managed by the Boot parent: 3.2.0 is the springdoc line built against Spring Boot 4.1.2.
+		-->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
 		</dependency>
 
 		<dependency>

@@ -1,12 +1,17 @@
 package hr.algebra.sitelog.common.web;
 
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerMapping;
 
 import hr.algebra.sitelog.incident.service.IncidentStatsService;
 import hr.algebra.sitelog.notification.service.NotificationService;
 import hr.algebra.sitelog.user.service.CurrentUserProvider;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Model attributes the layout of every screen needs:
@@ -27,6 +32,9 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  *
  * <p>An anonymous request (the login page) gets none of these attributes: there is no user to
  * show, and the notification and incident services require a signed-in caller.
+ *
+ * <p>The REST controllers ({@code @RestController}, i.e. {@code @ResponseBody}) are skipped too:
+ * they render JSON, not the layout, so the four queries would be wasted on every API call.
  */
 @ControllerAdvice(basePackages = "hr.algebra.sitelog")
 public class LayoutModelAdvice {
@@ -45,13 +53,23 @@ public class LayoutModelAdvice {
 	}
 
 	@ModelAttribute
-	public void layout(Model model) {
+	public void layout(Model model, HttpServletRequest request) {
+		if (rendersBody(request)) {
+			return;
+		}
 		currentUserProvider.findCurrentUser().ifPresent(user -> {
 			model.addAttribute("currentUser", user);
 			model.addAttribute("unreadCount", notificationService.unreadCount());
 			model.addAttribute("notifications", notificationService.latestUnread());
 			model.addAttribute("openIncidentCount", incidentStats.openIncidentCount());
 		});
+	}
+
+	/** True for a handler whose return value is the response body (REST), set by the handler mapping. */
+	static boolean rendersBody(HttpServletRequest request) {
+		return request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE) instanceof HandlerMethod handler
+				&& (AnnotatedElementUtils.hasAnnotation(handler.getBeanType(), ResponseBody.class)
+						|| handler.hasMethodAnnotation(ResponseBody.class));
 	}
 
 }
