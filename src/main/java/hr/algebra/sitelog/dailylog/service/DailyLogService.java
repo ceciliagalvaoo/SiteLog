@@ -11,6 +11,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import hr.algebra.sitelog.audit.aspect.AuditedAction;
+import hr.algebra.sitelog.audit.domain.DomainActionType;
 import hr.algebra.sitelog.common.exception.DeletionNotAllowedException;
 import hr.algebra.sitelog.common.exception.InvalidFieldException;
 import hr.algebra.sitelog.common.exception.InvalidTransitionException;
@@ -34,7 +36,8 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
  * <ul>
  * <li><b>AR1 part 1 - lock after sign-off.</b> Every write checks {@link LogStatus#isEditable()}
  * first and throws {@code LogLockedException} (409); the V3 trigger rejects the same writes in the
- * database. Reopen with reason and approval is milestone M3.</li>
+ * database. Reopen with reason and supervisor approval is {@link LogReopenService}; after an
+ * approved reopen the log is REOPENED, editable again, and {@link #signOff} locks it again.</li>
  * <li><b>Optimistic locking.</b> The form sends the version it was loaded with; a different
  * current version, or a concurrent commit caught by {@code @Version}, ends as
  * {@code ObjectOptimisticLockingFailureException} (409). Because an update may change only
@@ -186,6 +189,7 @@ public class DailyLogService {
 	 * fails with 409. Only the manager of the log's site may sign it off.
 	 */
 	@PreAuthorize("hasRole('SITE_MANAGER') and @siteAccess.canManageLog(#id)")
+	@AuditedAction(DomainActionType.LOG_SIGNED_OFF)
 	@Transactional
 	public void signOff(Long id, Long expectedVersion) {
 		DailyLog log = dailyLogs.findDetailById(id).orElseThrow(() -> new NotFoundException(DailyLog.class, id));
