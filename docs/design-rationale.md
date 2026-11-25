@@ -6,14 +6,12 @@ description: Why the SiteLog high-fidelity prototype looks and behaves the way i
 
 # Design rationale (M2)
 
-:::info Status (2026-11-07, milestone M2, revision 2)
-High-fidelity prototype and component set reviewed against the assignment, the
+The high-fidelity prototype and component set were reviewed against the assignment, the
 [domain model](./architecture/domain-model.md) and the Flyway migrations. The prototype was made
 **before** the Thymeleaf screens. Review findings were corrected in Figma; the second revision
 (darker text palette, date and time controls, expanded component set) is described in
 [Design evolution: revision 2](#design-evolution-revision-2). What the implementation refines on
 top of the prototype is listed in [From prototype to implementation](#from-prototype-to-implementation).
-:::
 
 - **Figma prototype (presentation mode, starts at Flow 1 – Sites):**
   [open the prototype](https://www.figma.com/proto/OdFchbgQXPWVLw115Wc3iz/SiteLog?node-id=20-3626&p=f&scaling=min-zoom&content-scaling=fixed&page-id=9%3A3&starting-point-node-id=20%3A3626)
