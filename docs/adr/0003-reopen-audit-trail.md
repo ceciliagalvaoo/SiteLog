@@ -13,12 +13,12 @@ description: How changes to a reopened daily log are recorded — Hibernate Enve
 - **Written:** 2026-11-04
 - **Milestone:** M2 (schema and Envers mapping), M3 (reopen workflow and audit view)
 
-:::info Status of the implementation (2026-11-15)
+:::info Status of the implementation (2026-11-25)
 | When | What |
 |---|---|
 | M2, 2026-11-04 | Audit tables created by `V3__incidents_and_reopen.sql`, made append-only by `V5__append_only_audit_tables.sql`. |
 | M2, week 7 | `hibernate-envers` added; `@Audited` on `DailyLog`, `WorkEntry`, `CrewAssignment` with `NOT_AUDITED` references; revision entity `AuditRevision` (`revinfo`) and `AuditRevisionListener` (user email, or `system`); `DefaultAuditStrategy` set in `application.yml`. Every change to the aggregate made through the application is audited from now on. `EntityMappingTests` checks that audit rows are written with the user. |
-| M3 (planned) | Reopen request / approval / rejection workflow, the domain `@Aspect` (decision 6) and the before/after view built from the revisions. |
+| M3, week 10 | **Implemented.** Reopen workflow in `LogReopenService`: request by the site manager of the log's site (reason mandatory, one `PENDING` per log, supervisors notified), approval by a safety supervisor (`REOPENED`, `revision` + 1, optional note), rejection with a mandatory reason (`decision_note`, V7); the request row is locked with `SELECT ... FOR UPDATE` while it is decided. Decision 6: `@AuditedAction` + `DomainActionAspect` (outermost advice, outside `@PreAuthorize` and the transaction) record sign-off, reopen request / approval / rejection, incident transitions and corrective action changes with their outcome in the append-only `domain_action` table (V7) and the `sitelog.audit` log. Decision 4: `DailyLogHistoryService` builds before/after per field from the Envers revisions with `AuditReader`; page `/daily-logs/{id}/history`, API `GET /api/v1/daily-logs/{id}/revisions`. It lists **every** revision (consistent with decision 5) with the reopen requests and the recorded actions next to them, instead of only the window between approval and the next sign-off. Tested in `ReopenAndIncidentFlowTests`, `LogReopenServiceTests`, `DomainActionAspectTests`. Details: [Architecture — AR1](../architecture/overview.md#11-ar1-audited-reopen), [domain action aspect](../architecture/overview.md#13-domain-action-aspect). |
 :::
 
 ## Context
@@ -103,7 +103,7 @@ PostgreSQL 17 everywhere.
 - **Audit rows also for `DRAFT`.** Storage grows with every edit, not only reopen edits;
   accepted for the reasons in decision 5.
 - **Before/after is computed, not stored.** The reopen history page needs a query that pairs
-  revisions; it is tested in M3. Field-level differences are calculated in the service, not
+  revisions; it is tested since M3 week 10 (`ReopenAndIncidentFlowTests`, `FieldChangeTests`). Field-level differences are calculated in the service, not
   read from a column.
 - **Same transaction as the change.** Envers writes in the business transaction: if the change
   rolls back (409, trigger error), its audit rows roll back too, so the trail never records a

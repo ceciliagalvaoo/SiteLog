@@ -45,14 +45,16 @@ site is published separately on GitHub Pages.
 
 ## Status
 
-Milestone M3 in progress (2026-11-24, week 9 done). From M2: database (Flyway `V1`–`V6`), JPA
-entities with Envers auditing, and the screens for sites, crews, daily logs (work entries, crew
-rows, sign-off and lock) and notifications, in English and Croatian. From M3 week 9: login with
-the four roles, authorization on every service, user administration, profile and password
-change, and the deployment setup for Render + Supabase
-([Deployment](./operations/deployment.md)). Incidents, the reopen workflow, the REST API, the
-compliance report, the AI draft and the scheduled jobs follow in M3–M4; each page states what
-already exists.
+Milestone M3 in progress (2026-11-25, weeks 9 and 10 done). From M2: database (Flyway
+`V1`–`V6`), JPA entities with Envers auditing, and the screens for sites, crews, daily logs (work
+entries, crew rows, sign-off and lock) and notifications, in English and Croatian. From M3 week
+9: login with the four roles, authorization on every service, user administration, profile and
+password change, and the deployment on Render + Supabase
+([Deployment](./operations/deployment.md)). From M3 week 10: the REST API with OpenAPI, the
+audited reopen with revision history (AR1), the incident severity workflow with corrective
+actions (AR2), the domain action aspect and the notifications for reopen requests and
+high-severity incidents (`V7`). The AI draft (M3 week 11), the compliance report and the
+scheduled jobs (M4) follow; each page states what already exists.
 
 ## Where to go next
 

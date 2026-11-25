@@ -6,17 +6,19 @@ description: Entities, relations, business rules, delete rules, roles and state 
 
 # Domain model
 
-:::info Status (2026-11-24, milestone M3 week 9)
+:::info Status (2026-11-25, milestone M3 week 10)
 Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2 (Flyway
-`V2`–`V6`) and the JPA entities map them (M2). The diagrams below were checked against the
-migrations and the entity classes on 2026-11-15. This page is the logical model; the physical
+`V2`–`V6`, plus `V7` in M3 week 10) and the JPA entities map them. The diagrams below were
+checked against the migrations and the entity classes on 2026-11-25. The permission matrix was
+confirmed on 2026-11-24. This page is the logical model; the physical
 schema (every column, constraint, index and trigger) is in [Database schema](./database.md), and
 the migrations win if the two disagree. The reasoning behind the mapping is in
 [ADR-0001](../adr/0001-persistence-model.md).
 
 Entities in the code (`hr.algebra.sitelog.<feature>.domain`): `Site`, `Crew`, `AppUser`, `Role`,
 `DailyLog`, `WorkEntry`, `CrewAssignment`, `LogReopenRequest`, `Incident`, `CorrectiveAction`,
-`Notification`, plus the Envers revision entity `AuditRevision` (`common.audit`).
+`Notification`, `DomainAction` (`audit.domain`, M3 week 10), plus the Envers revision entity
+`AuditRevision` (`common.audit`).
 `IncidentDraft` is a table only; its entity arrives with the AI feature (M3).
 :::
 
@@ -29,6 +31,7 @@ Entities in the code (`hr.algebra.sitelog.<feature>.domain`): `Site`, `Crew`, `A
 | `Incident` | `CorrectiveAction` | `Site`, `Crew` (affected crews), `DailyLog` (optional), `AppUser` |
 | `Site`, `Crew`, `AppUser` | — | `Role` (`AppUser`), `AppUser` (`Site.manager`) |
 | `Notification` | — | `AppUser` (recipient) |
+| `DomainAction` (append-only, written by the aspect) | — | `AppUser` (actor, optional); the target record by type + id, without foreign key |
 | `IncidentDraft` (table only, entity in M3) | — | `Site`, `AppUser`, `Incident` (after acceptance) |
 
 `LogReopenRequest` is deliberately **not** cascaded from `DailyLog`: requests are history and must
@@ -160,6 +163,7 @@ erDiagram
     APP_USER |o--o{ INCIDENT_DRAFT : "reviews"
     INCIDENT_DRAFT |o--o| INCIDENT : "becomes, after sign-off"
     APP_USER ||--o{ NOTIFICATION : "receives"
+    APP_USER |o--o{ DOMAIN_ACTION : "performs"
 
     ROLE {
         bigint id PK
@@ -183,6 +187,7 @@ erDiagram
         timestamptz requested_at "default now()"
         timestamptz decided_at "nullable"
         varchar status "PENDING, APPROVED, REJECTED; at most one PENDING per log"
+        text decision_note "V7: optional on approval, required on rejection"
     }
     INCIDENT_DRAFT {
         bigint id PK
@@ -204,10 +209,24 @@ erDiagram
         bigint recipient_id FK "AppUser"
         varchar type "CORRECTIVE_ACTION_OVERDUE, DAILY_LOG_UNSIGNED, REOPEN_REQUESTED, HIGH_SEVERITY_INCIDENT"
         varchar title "not blank"
-        varchar body "nullable"
+        varchar body "nullable, free text of rows before V7"
+        varchar body_key "V7: message key of the body"
+        varchar body_args "V7: arguments of body_key"
         varchar link "nullable, relative path only"
         timestamptz created_at "default now()"
         timestamptz read_at "null while unread"
+    }
+    DOMAIN_ACTION {
+        bigint id PK
+        varchar action "LOG_SIGNED_OFF, LOG_REOPEN_*, INCIDENT_*, CORRECTIVE_ACTION_*"
+        varchar entity_type "DAILY_LOG or INCIDENT"
+        bigint entity_id "no FK: survives a deleted target"
+        bigint actor_id FK "AppUser, nullable"
+        varchar actor_email "nullable"
+        timestamptz occurred_at
+        varchar outcome "SUCCESS, REJECTED, DENIED, FAILED"
+        int duration_ms
+        varchar detail "message key or exception class"
     }
     SITE {
         bigint id PK
@@ -220,7 +239,8 @@ erDiagram
     }
 ```
 
-Entities repeated with only `id` are fully described in the first diagram.
+Entities repeated with only `id` are fully described in the first diagram. `DOMAIN_ACTION` has
+no relation line to `DAILY_LOG` or `INCIDENT` because `entity_id` has no foreign key.
 
 ### Mapping notes
 
@@ -295,16 +315,20 @@ evidence. The service checks first and answers with a flash message; the foreign
 ## Notifications
 
 `Notification` (V6) is an in-app message for one user, shown under the bell in the top bar
-until it is read (`read_at` set). M2 has the entity, the bell (unread counter and newest 10
-unread), the list page and *mark as read* / *mark all as read* / *open*. Nothing creates
-notifications yet: the producers are the scheduled jobs (overdue corrective action, unsigned
-daily log) and domain events (reopen requested, `HIGH`/`CRITICAL` incident) in M3/M4.
+until it is read (`read_at` set). M2 has the bell (unread counter and newest 10 unread), the
+list page and *mark as read* / *mark all as read* / *open*; only the recipient sees or reads it.
 
-**Decision (2026-11-08): store a message key and arguments, not finished text.** The title will
-come from `notification.type.<TYPE>` and the body will be rendered on screen in the reader's
-language, so the same notification reads correctly in English and Croatian. This is implemented
-when notifications are first created (M3/M4). V6 is not edited: if the arguments need their own
-column, a new migration adds it.
+| Type | Created when | Recipients | Status |
+|---|---|---|---|
+| `REOPEN_REQUESTED` | A site manager requests a reopen | Every active `SAFETY_SUPERVISOR` | M3 week 10 |
+| `HIGH_SEVERITY_INCIDENT` | An incident is reported as `HIGH` / `CRITICAL`, or raised to it by an edit | Every active `SAFETY_SUPERVISOR` | M3 week 10 |
+| `CORRECTIVE_ACTION_OVERDUE` | Nightly job | Assignee | M4 |
+| `DAILY_LOG_UNSIGNED` | Nightly job | Site manager | M4 |
+
+**Decision (2026-11-08): store a message key and arguments, not finished text.** The title is
+the key `notification.type.<TYPE>`, the body is `body_key` + `body_args` (V7), and both are
+rendered in the reader's language, so the same notification reads correctly in English and
+Croatian. V6 was not edited; V7 added the two columns.
 
 ## Decision — reopen audit trail (AR1)
 
@@ -344,7 +368,7 @@ DAILY_LOG_AUDIT (proposed)
 
 **Decision (2026-10-31): (a) Hibernate Envers**, recorded in ADR-0003. The Envers mapping is in
 place since M2 (`@Audited` on the aggregate, revision entity `AuditRevision` with
-`AuditRevisionListener`); the reopen workflow and the before/after screen come in M3.
+`AuditRevisionListener`); the reopen workflow and the before/after history page since M3 week 10.
 
 - Reopen edits touch the children (`WorkEntry`, `CrewAssignment`), including deletions. Envers
   records inserts, updates and deletes on every `@Audited` entity without per-field service code,
@@ -354,57 +378,98 @@ place since M2 (`@Audited` on the aggregate, revision entity `AuditRevision` wit
 - The `*_aud` tables and the revision table (`revinfo`) are created by Flyway (`V3`), so the
   audit schema is explicit and validated like the rest (`ddl-auto=validate`); `V5` makes them
   append-only ([Database schema](./database.md#audit-tables-envers)).
-- The audit works in three layers: `LOG_REOPEN_REQUEST` (why and who approved), a domain
-  `@Aspect` (which action happened — sign-off, reopen, incident transitions; M3) and Envers
-  (what changed in the data).
+- The audit works in three layers: `LOG_REOPEN_REQUEST` (why and who decided), the domain
+  aspect writing `DOMAIN_ACTION` (which action happened, by whom, with which outcome) and Envers
+  (what changed in the data). All three are implemented since M3 week 10
+  ([Architecture — AR1](./overview.md#11-ar1-audited-reopen)).
 
 ## Roles and capabilities
 
-Target capabilities of each role (the full scope, including workflows built later in M3):
+Confirmed on 2026-11-24. Target capabilities of each role; the AI draft and the compliance
+report get their implementation in M3 week 11 and M4.
 
 | Role | Can | Cannot |
 |---|---|---|
-| `ADMIN` | Manage sites, crews and users. | Sign off logs or incidents. |
-| `SITE_MANAGER` | Create, edit and delete daily logs and work entries of the sites they manage; sign off a log; request a reopen (with reason); write shift notes for the AI draft; report incidents; sign off `LOW` / `MEDIUM` incidents. | Edit a signed-off log; approve a reopen; sign off `HIGH` / `CRITICAL` incidents; accept AI drafts. |
-| `SAFETY_SUPERVISOR` | Review, edit and accept or reject AI drafts; sign off incidents of any severity (only role allowed for `HIGH` / `CRITICAL`); approve or reject reopen requests; manage corrective actions. | Manage users, sites and crews. |
-| `INSPECTOR` | Read logs and incidents; view the compliance report. | Any write operation. |
+| `ADMIN` | Manage sites, crews and users (users are only deactivated, never deleted). Read everything. | Write daily logs, reopen requests, incidents or corrective actions. |
+| `SITE_MANAGER` | On the sites they manage: create, edit and delete daily logs, work entries and crew rows; sign off a log; request a reopen (with reason); report incidents; edit an own-site incident while `REPORTED`; start review, sign off and close `LOW` / `MEDIUM` incidents of the own site; delete a `REPORTED` incident without corrective actions; write shift notes for the AI draft (M3 week 11). Mark as done a corrective action assigned to them. Read every site. | Edit a signed-off log; approve or reject a reopen; move a `HIGH` / `CRITICAL` incident through the workflow or lower its severity; manage corrective actions; accept AI drafts. |
+| `SAFETY_SUPERVISOR` | On every site: approve or reject reopen requests (own queue); start review, sign off and close incidents of any severity (only role for `HIGH` / `CRITICAL`); edit incidents while `REPORTED` or `UNDER_REVIEW`, including lowering a `HIGH` / `CRITICAL` severity; create, edit, assign, mark as done and delete corrective actions; review and accept AI drafts (M3 week 11). Read everything. | Manage users, sites and crews; write daily logs; report incidents. |
+| `INSPECTOR` | Read logs, incidents, revision history; view the compliance report (M4). | Any write operation. |
 
 Authorization is enforced on service methods (`@PreAuthorize`), and the Thymeleaf security
 dialect hides actions the current user cannot perform. Hiding is cosmetic; the service check is
-the rule. How the checks are wired: [Architecture overview — Security](./overview.md#8-security).
+the rule, for the screens and the REST API alike. How the checks are wired:
+[Architecture overview — Security](./overview.md#8-security).
 
-### Permissions implemented today
+### Permissions
 
-:::note Provisional
-The rules marked *provisional* follow the role descriptions above where those are explicit and
-take the restrictive choice where they are not. They are to be confirmed in week 10, before the
-reopen and incident workflows add their own permissions.
-:::
-
-State after M3 week 9. "Own site" means `site.manager_id` is the signed-in user (checked by
-`SiteAccess`). **Read** = list and detail pages and the read methods of the services, which
-require only a signed-in user.
+Confirmed on 2026-11-24 (state after M3 week 10). "Own site" means `site.manager_id` is the
+signed-in user (checked by `SiteAccess` and `IncidentAccess`). **Read** = list and detail pages,
+the `GET` endpoints of the API and the read methods of the services, which require only a
+signed-in user.
 
 | Operation | `ADMIN` | `SITE_MANAGER` | `SAFETY_SUPERVISOR` | `INSPECTOR` |
 |---|---|---|---|---|
-| Read sites, daily logs, work entries, crew rows, crews | yes | yes, every site *(provisional)* | yes | yes |
+| Read sites, daily logs, work entries, crew rows, crews, incidents, corrective actions, reopen requests of a log, revision history | yes | yes, every site | yes | yes |
 | Create, edit, delete a site; choose its manager | yes | no | no | no |
 | Create, edit, deactivate, delete a crew | yes | no | no | no |
-| Create, edit, delete a daily log (draft or reopened); open the *New daily log* form | no *(provisional)* | own sites only *(provisional)* | no *(provisional)* | no |
+| Create, edit, delete a daily log (draft or reopened); open the *New daily log* form | no | own sites only | no | no |
 | Add, edit, remove work entries and crew rows | no | own sites only | no | no |
 | Sign off a daily log | no | own sites only | no | no |
+| Request a reopen | no | own sites only | no | no |
+| Approve or reject a reopen; see the pending queue (`/reopen-requests`) | no | no | yes | no |
+| Report an incident | no | own sites only | no | no |
+| Edit an incident | no | own sites, only while `REPORTED` | yes, while `REPORTED` or `UNDER_REVIEW` | no |
+| Lower the severity of a `HIGH` / `CRITICAL` incident | no | no | yes | no |
+| Start review, sign off, close an incident | no | own sites, `LOW` / `MEDIUM` only | yes, any severity | no |
+| Delete an incident (`REPORTED`, no corrective actions) | no | own sites only | no | no |
+| Create, edit, delete a corrective action | no | no | yes | no |
+| Mark a corrective action as done | no | if they are its assignee | yes | no |
 | List, create and edit users; activate / deactivate; assign sites | yes | no | no | no |
 | Own profile: name, preferred language, password | yes | yes | yes | yes |
 | Own notifications: read, mark as read | yes | yes | yes | yes |
 
-Reopen requests and approval, incidents, corrective actions, AI drafts and the compliance report
-get their rules when those features are built (M3–M4), following the target table above.
-
 A refused call throws `AccessDeniedException` before the method body runs; the screen answers
-with the 403 page. An id that does not exist answers 404, not 403 (`SiteAccess` lets the call
-through and the service throws its not-found exception). `RoleAccessMatrixTests` calls
-representative endpoints of these rows (pages, and POSTs with a valid CSRF token and body) as each of the five demo
-users and anonymously, and expects success for the allowed users and 403 for everyone else.
+with the 403 page, the API with a 403 `ProblemDetail`. An id that does not exist answers 404,
+not 403 (`SiteAccess` and `IncidentAccess` let the call through and the service throws its
+not-found exception). `RoleAccessMatrixTests` calls representative endpoints of these rows
+(pages, and POSTs with a valid CSRF token and body) as each of the five demo users and
+anonymously, and expects success for the allowed users and 403 for everyone else; the API
+controller tests check the 403 of the API per role.
+
+### Reopen requests
+
+Confirmed on 2026-11-24 (AR1). Implemented in `LogReopenService`.
+
+| Rule | Where it is checked |
+|---|---|
+| Only a `SIGNED_OFF` log can be reopened, and the request carries the version the user saw. | `LogReopenService.request` (409 otherwise). |
+| The reason is mandatory. | Service (field error / 422), `ck_log_reopen_request_reason`. |
+| At most one `PENDING` request per log. | Service (409), `uk_log_reopen_request_pending`. |
+| Every active safety supervisor is notified. | `NotificationPublisher.notifyRole` (`REOPEN_REQUESTED`). |
+| Approval: the request becomes `APPROVED`, the log `REOPENED` with `revision` + 1; the note is optional. | `LogReopenService.approve`; the V3 trigger accepts exactly this change on a `SIGNED_OFF` row. |
+| Rejection needs a reason; the log stays `SIGNED_OFF`. | `LogReopenService.reject`, `ck_log_reopen_request_decision_note` (V7). |
+| A request is decided once. Two supervisors deciding at the same moment: the second waits for the first, then gets 409. | `SELECT ... FOR UPDATE` on the request (`findForDecisionById`), status check after the lock. |
+| A concurrent change of the log while it is being reopened is a conflict. | `DailyLog.@Version` (409). |
+| A reopened log is edited and signed off again like a draft; every change is in the revision history. | `DailyLogService`, Envers, `DailyLogHistoryService`. |
+
+### Incidents and corrective actions
+
+Confirmed on 2026-11-24 (AR2). Implemented in `IncidentService` and `CorrectiveActionService`.
+
+| Rule | Where it is checked |
+|---|---|
+| `HIGH` / `CRITICAL` need root cause, witnesses, medical treatment and authority notified: on report, on every edit and again at sign-off. Blank text counts as missing. | `IncidentRules.missingSeverityFields` → `MissingSeverityFieldsException` (422 with every missing field); `ck_incident_severity_fields` (V3) as the database safety net for `SIGNED_OFF` / `CLOSED`. |
+| `HIGH` / `CRITICAL` are moved through the workflow (start review, sign-off, close) only by a safety supervisor. | `@PreAuthorize` with `@incidentAccess.isLowSeverityOnOwnSite`, repeated on the loaded record in the service. |
+| Only a safety supervisor may lower a `HIGH` / `CRITICAL` severity (otherwise a manager could downgrade and sign it himself). | `IncidentService.update` (field error on *Severity*). |
+| Raising an incident to `HIGH` / `CRITICAL`, or reporting it as such, notifies every active safety supervisor. | `NotificationPublisher` (`HIGH_SEVERITY_INCIDENT`). |
+| Edit: site manager only while `REPORTED`; supervisor while `REPORTED` or `UNDER_REVIEW`; no edit after sign-off. | `IncidentService.update` (409). |
+| Delete: only a `REPORTED` incident without corrective actions. | `IncidentService.delete` (409). |
+| Close: only `SIGNED_OFF`, and only when every corrective action is `DONE`. | `IncidentService.close` (409). |
+| The incident date cannot be in the future; the optional daily log must belong to the same site; a newly added affected crew must be active. | `IncidentService` (field errors / 422). |
+| Corrective actions: not on a `CLOSED` incident; due date not in the past (an unchanged past date of an overdue action may stay); the assignee is optional and must be an active `SITE_MANAGER` or `SAFETY_SUPERVISOR`; a `DONE` action is final (no edit, no delete). | `CorrectiveActionService` (field errors / 422, 409). |
+| *Mark as done* by a supervisor or by the action's assignee; `completed_at` is set. | `@PreAuthorize` with `@incidentAccess.isAssignee`; `ck_corrective_action_completed`. |
+| `OPEN` → `OVERDUE` is set by the nightly job (M4), not on read. Moving the due date of an `OVERDUE` action to today or later makes it `OPEN` again. | M4 job; `CorrectiveActionService.update`. |
+| Every change sends the version the user saw; a corrective action change bumps the incident's version. | `IncidentRules.requireVersion`, `OPTIMISTIC_FORCE_INCREMENT` on the incident (409). |
 
 ### User accounts
 
@@ -412,7 +477,7 @@ users and anonymously, and expects success for the allowed users and 403 for eve
 |---|---|
 | The login is the e-mail, unique ignoring case. | `AppUserDetailsService` (case-insensitive lookup), `UserService` (field error on *E-mail*); `uk_app_user_email` + `ck_app_user_email_lower` (stored lower-case). |
 | An inactive user cannot sign in. The login page shows the same message as for a wrong password, so it does not reveal which e-mails exist. | `AppUserPrincipal.isEnabled()` → Spring Security's authentication provider. |
-| Users are never deleted, only deactivated: daily logs, incidents and audit rows point to them. *(provisional)* | `UserService` has no delete operation. |
+| Users are never deleted, only deactivated: daily logs, incidents and audit rows point to them (confirmed 2026-11-24). | `UserService` has no delete operation. |
 | An admin cannot deactivate their own account or change their own role. | `UserService.update` / `setActive`. |
 | Every site has exactly one manager, an active `SITE_MANAGER`. A site leaves a manager only by being assigned to another one, so a user who still manages sites keeps the `SITE_MANAGER` role. | `UserService.assignSites` and `update`, `SiteService`; `site.manager_id NOT NULL`. |
 | Password: at least 12 characters and at most 72 bytes (BCrypt uses only the first 72 bytes). A change needs the current password and a matching confirmation, and must differ from the current one. Stored only as a BCrypt hash. | `PasswordPolicy` (service, also for the future API), `@PasswordLength` on the forms (one message per field). |
@@ -439,24 +504,63 @@ stateDiagram-v2
     end note
 ```
 
-### Incident (advanced requirement 2)
+### Reopen request (advanced requirement 1)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> REPORTED : incident reported (or AI draft accepted)
-    REPORTED --> UNDER_REVIEW : review started
-    UNDER_REVIEW --> SIGNED_OFF : sign-off
-    SIGNED_OFF --> CLOSED : close
-    note right of UNDER_REVIEW
-        HIGH and CRITICAL require root cause, witnesses,
-        medical treatment and authority notified,
-        validated in the service before sign-off.
+    [*] --> PENDING : SITE_MANAGER of the site requests (reason required, log SIGNED_OFF, none pending)
+    PENDING --> APPROVED : SAFETY_SUPERVISOR approves (note optional), log becomes REOPENED
+    PENDING --> REJECTED : SAFETY_SUPERVISOR rejects (reason required), log stays SIGNED_OFF
+    APPROVED --> [*]
+    REJECTED --> [*]
+```
+
+### Incident (advanced requirement 2)
+
+Values of `IncidentStatus`. Who may perform each step is in [Permissions](#permissions).
+
+```mermaid
+stateDiagram-v2
+    [*] --> REPORTED : SITE_MANAGER reports (own site)
+    REPORTED --> REPORTED : edit (manager of the site or supervisor)
+    REPORTED --> [*] : delete (manager of the site, no corrective actions)
+    REPORTED --> UNDER_REVIEW : start review
+    UNDER_REVIEW --> UNDER_REVIEW : edit (supervisor only)
+    UNDER_REVIEW --> SIGNED_OFF : sign-off (signed_off_by, signed_off_at set)
+    SIGNED_OFF --> CLOSED : close (every corrective action DONE)
+    note right of REPORTED
+        HIGH and CRITICAL need root cause, witnesses,
+        medical treatment and authority notified
+        on report, on every edit and at sign-off (422).
     end note
     note right of SIGNED_OFF
-        HIGH and CRITICAL: only SAFETY_SUPERVISOR.
-        LOW and MEDIUM: SITE_MANAGER or SAFETY_SUPERVISOR.
+        Start review, sign-off, close:
+        HIGH and CRITICAL only SAFETY_SUPERVISOR;
+        LOW and MEDIUM also the SITE_MANAGER of the site.
     end note
 ```
+
+How an accepted AI draft enters this workflow is defined with the AI feature (M3 week 11).
+
+### Corrective action
+
+Values of `CorrectiveActionStatus`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN : SAFETY_SUPERVISOR adds (due date today or later)
+    OPEN --> DONE : mark as done (supervisor or assignee), completed_at set
+    OPEN --> OVERDUE : nightly job, due date passed (M4)
+    OVERDUE --> OPEN : supervisor moves the due date to today or later
+    OVERDUE --> DONE : mark as done
+    OPEN --> [*] : delete (supervisor)
+    OVERDUE --> [*] : delete (supervisor)
+    note right of DONE
+        Final: no edit, no delete.
+    end note
+```
+
+No change on a `CLOSED` incident.
 
 ### Incident draft (AI output)
 

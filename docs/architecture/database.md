@@ -1,18 +1,20 @@
 ---
 title: Database schema
 sidebar_position: 3
-description: Physical PostgreSQL schema created by the Flyway migrations V1–V6 — tables, constraints, indexes, lock triggers, append-only Envers audit tables, notifications and demo data.
+description: Physical PostgreSQL schema created by the Flyway migrations V1–V7 — tables, constraints, indexes, lock triggers, append-only audit tables (Envers and domain actions), notifications and demo data.
 ---
 
 # Database schema
 
-:::info Status (2026-11-15, milestone M2)
-This page describes the schema exactly as the Flyway migrations `V1`–`V6` in
+:::info Status (2026-11-25, milestone M3 week 10)
+This page describes the schema exactly as the Flyway migrations `V1`–`V7` in
 `src/main/resources/db/migration/` create it. **The migrations are the source of truth**; if this
 page and a migration disagree, the migration wins. The V2–V5 rules are covered by integration
 tests against PostgreSQL 17 (Testcontainers) in `src/test/java/hr/algebra/sitelog/db/`; for V6 the
-repository queries are tested (`NotificationRepositoryTests`), the two `CHECK` constraints are not
-yet.
+repository queries and the two `CHECK` constraints are tested (`NotificationRepositoryTests`,
+`NotificationConstraintTests`). V7 (M3 week 10) is exercised through the services against PostgreSQL
+(`ReopenAndIncidentFlowTests` reads `domain_action`); its constraints and the append-only trigger
+on `domain_action` have no dedicated `db/` test yet.
 The JPA entities and the Envers mappings exist (M2) and Hibernate checks them against this schema
 at startup (`ddl-auto=validate`). There is no JPA entity for `incident_draft` yet (AI feature, M3);
 the table is only read by a native existence query (site delete rule).
@@ -33,8 +35,9 @@ Related pages: [domain model](./domain-model.md) (entities, roles, state machine
 | `V4__seed_demo_data.sql` | Demo data: 5 users, 3 sites, 6 crews, 8 daily logs with work entries and crew assignments, reopen requests, incidents, corrective actions, AI drafts. |
 | `V5__append_only_audit_tables.sql` | Triggers that make the four audit tables append-only (no `UPDATE`, `DELETE`, `TRUNCATE`). |
 | `V6__notifications.sql` | `notification` (in-app notifications under the bell icon) and its index `ix_notification_recipient_read`. |
+| `V7__domain_actions_reopen_decision_notification_args.sql` | `domain_action` (rows written by the `@AuditedAction` aspect, append-only); `log_reopen_request.decision_note` with a `CHECK` that a rejection has a reason; `notification.body_key` / `body_args` (translatable body). |
 
-Committed migrations are never edited; a change to the schema is a new `V7__...` file.
+Committed migrations are never edited; a change to the schema is a new `V8__...` file.
 
 Conventions used in every migration (stated in the V2 header):
 
@@ -85,6 +88,7 @@ erDiagram
     work_entry ||..o{ work_entry_aud : "audited as"
     crew_assignment ||..o{ crew_assignment_aud : "audited as"
     app_user ||--o{ notification : "recipient_id"
+    app_user |o--o{ domain_action : "actor_id"
 
     role {
         bigint id PK
@@ -129,6 +133,7 @@ erDiagram
         bigint requested_by FK
         bigint approved_by FK "nullable"
         varchar status
+        text decision_note "V7, required when REJECTED"
     }
     incident {
         bigint id PK
@@ -163,7 +168,17 @@ erDiagram
         bigint recipient_id FK "index with read_at"
         varchar type
         varchar link "relative path"
+        varchar body_key "V7, nullable"
+        varchar body_args "V7, needs body_key"
         timestamptz read_at "null while unread"
+    }
+    domain_action {
+        bigint id PK
+        varchar action
+        varchar entity_type "DAILY_LOG, INCIDENT"
+        bigint entity_id "no FK"
+        bigint actor_id FK "nullable"
+        varchar outcome "SUCCESS, REJECTED, DENIED, FAILED"
     }
     revinfo {
         bigint rev PK "identity"
@@ -346,6 +361,7 @@ PK `pk_incident_affected_crew (incident_id, crew_id)`.
 | `requested_at` | `timestamptz` | NN | default `now()` |
 | `decided_at` | `timestamptz` | null | `ck_log_reopen_request_dates`: `decided_at IS NULL OR decided_at >= requested_at` |
 | `status` | `varchar(10)` | NN | default `'PENDING'`; `ck_log_reopen_request_status`: `PENDING`, `APPROVED`, `REJECTED` |
+| `decision_note` | `text` | null | **V7.** The supervisor's note: optional on approval, mandatory on rejection. `ck_log_reopen_request_decision_note`: `PENDING` → null; `APPROVED` → any; `REJECTED` → not blank (`nullif(btrim(decision_note), '') IS NOT NULL`). V7 fills the one `REJECTED` row of the V4 seed before adding the check. |
 
 Also `ck_log_reopen_request_decision` and the partial unique index `uk_log_reopen_request_pending`,
 see [Integrity rules](#integrity-rules-in-the-database).
@@ -382,6 +398,8 @@ Also `ck_incident_draft_review` and `ck_incident_draft_incident`, see below.
 | `link` | `varchar(500)` | null | `ck_notification_link_relative`: `link IS NULL OR (link LIKE '/%' AND link NOT LIKE '//%')` |
 | `created_at` | `timestamptz` | NN | default `now()` |
 | `read_at` | `timestamptz` | null | `NULL` while unread; set once when the recipient marks it as read |
+| `body_key` | `varchar(100)` | null | **V7.** Message key of the body, e.g. `notification.body.REOPEN_REQUESTED`; rendered in the reader's language |
+| `body_args` | `varchar(1000)` | null | **V7.** Arguments of `body_key`, separated by the ASCII unit separator (U+001F), which the application removes from the values (`MessageArgsConverter`). `ck_notification_body_args`: `body_args IS NULL OR body_key IS NOT NULL` |
 
 - **Relative link only.** The check accepts an application path such as `/daily-logs/42` and
   rejects an absolute URL (`https://...`) and a protocol-relative one (`//host/...`). The
@@ -392,11 +410,36 @@ Also `ck_incident_draft_review` and `ck_incident_draft_incident`, see below.
 - **Index `ix_notification_recipient_read (recipient_id, read_at)`** serves the two queries the
   layout runs on every page: the unread counter and the newest unread items for the bell
   (`recipient_id = ? AND read_at IS NULL`). Its leading column also covers the foreign key.
-- **No producer yet.** Nothing inserts notifications in M2; the bell, the list page and
-  *mark as read* work on existing rows. The producers (scheduled jobs and domain events) come in
-  M3/M4. Decision of 2026-11-08: a notification will store a **message key and its arguments**
-  instead of finished text, so it is shown in the reader's language. If that needs a column for
-  the arguments, it is added by a new migration; V6 stays as committed.
+- **Message key, not text (decision of 2026-11-08, columns added in V7).** Notifications created
+  by the application store `title` = `notification.type.<TYPE>` (a key) and `body_key` +
+  `body_args`; the old free-text `body` stays for rows created before V7. V6 stays as committed.
+- **Producers (M3 week 10).** `NotificationPublisher` inserts `REOPEN_REQUESTED` and
+  `HIGH_SEVERITY_INCIDENT` rows for every active safety supervisor; the two job types follow in
+  M4 ([Architecture — Notifications](./overview.md#14-notifications)).
+
+### `domain_action` (V7) — recorded domain actions
+
+One row per call of a service method annotated with `@AuditedAction`
+([Architecture — Domain action aspect](./overview.md#13-domain-action-aspect)).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | `bigint` identity | NN | PK |
+| `action` | `varchar(40)` | NN | `ck_domain_action_action`: the 14 values of `DomainActionType` (`LOG_SIGNED_OFF`, `LOG_REOPEN_REQUESTED`, `LOG_REOPEN_APPROVED`, `LOG_REOPEN_REJECTED`, `INCIDENT_REPORTED`, `INCIDENT_UPDATED`, `INCIDENT_REVIEW_STARTED`, `INCIDENT_SIGNED_OFF`, `INCIDENT_CLOSED`, `INCIDENT_DELETED`, `CORRECTIVE_ACTION_ADDED`, `CORRECTIVE_ACTION_UPDATED`, `CORRECTIVE_ACTION_DONE`, `CORRECTIVE_ACTION_DELETED`) |
+| `entity_type` | `varchar(30)` | NN | `ck_domain_action_entity_type`: `DAILY_LOG`, `INCIDENT` (corrective actions are recorded on their incident) |
+| `entity_id` | `bigint` | null | **no foreign key on purpose**: the target table depends on `entity_type`, and the record of an action must outlive its target (a deleted incident) |
+| `actor_id` | `bigint` | null | `fk_domain_action_actor` → `app_user(id)`; index `ix_domain_action_actor`; null for a call without a signed-in user |
+| `actor_email` | `varchar(255)` | null | kept as text, so the row stays readable if the user changes |
+| `occurred_at` | `timestamptz` | NN | default `now()` |
+| `outcome` | `varchar(10)` | NN | `ck_domain_action_outcome`: `SUCCESS`, `REJECTED`, `DENIED`, `FAILED` |
+| `duration_ms` | `integer` | NN | default 0; `ck_domain_action_duration`: `>= 0` |
+| `detail` | `varchar(500)` | null | message key of a business refusal or the exception class; null on success; never a message with data |
+
+- Index `ix_domain_action_entity (entity_type, entity_id, occurred_at)` serves the timeline of
+  one record (incident detail, daily log history), oldest first.
+- **Append-only:** `trg_domain_action_append_only` (`BEFORE UPDATE OR DELETE`, row) and
+  `trg_domain_action_no_truncate` (`BEFORE TRUNCATE`, statement) call the same
+  `audit_append_only_guard()` as the Envers tables ([Append-only](#append-only-v5)).
 
 ### Audit tables (V3, append-only since V5)
 
@@ -411,7 +454,7 @@ violation raises SQLSTATE `23514` (check), `23505` (unique) or `23503` (foreign 
 
 | Rule | Constraint | Definition |
 |---|---|---|
-| Enumerations match the Java enums | `ck_role_name`, `ck_daily_log_status`, `ck_daily_log_weather`, `ck_incident_severity`, `ck_incident_category`, `ck_incident_status`, `ck_corrective_action_status`, `ck_log_reopen_request_status`, `ck_incident_draft_severity`, `ck_incident_draft_category`, `ck_incident_draft_status`, `ck_app_user_language`, `ck_notification_type` | `column IN (...)`. A `CHECK` passes on `NULL`, so nullable columns (`weather`, draft `severity`/`category`) accept `NULL`. |
+| Enumerations match the Java enums | `ck_role_name`, `ck_daily_log_status`, `ck_daily_log_weather`, `ck_incident_severity`, `ck_incident_category`, `ck_incident_status`, `ck_corrective_action_status`, `ck_log_reopen_request_status`, `ck_incident_draft_severity`, `ck_incident_draft_category`, `ck_incident_draft_status`, `ck_app_user_language`, `ck_notification_type`, `ck_domain_action_action`, `ck_domain_action_entity_type`, `ck_domain_action_outcome` | `column IN (...)`. A `CHECK` passes on `NULL`, so nullable columns (`weather`, draft `severity`/`category`) accept `NULL`. |
 | Hours worked between 0 and 24 | `ck_crew_assignment_hours` | `hours_worked > 0 AND hours_worked <= 24` (0 itself is rejected) on a `numeric(4,2)` column. |
 | At least one worker | `ck_crew_assignment_workers` | `worker_count > 0` |
 | One log per site and day | `uk_daily_log_site_date` | `UNIQUE (site_id, log_date)` |
@@ -421,6 +464,7 @@ violation raises SQLSTATE `23514` (check), `23505` (unique) or `23503` (foreign 
 | Signed-off incident records who and when | `ck_incident_signed_off` | `status IN ('REPORTED','UNDER_REVIEW') OR (signed_off_by IS NOT NULL AND signed_off_at IS NOT NULL)`, so it also holds for `CLOSED`. |
 | Reopen decision is consistent | `ck_log_reopen_request_decision` | `PENDING` ⇒ `approved_by` and `decided_at` are `NULL`; `APPROVED`/`REJECTED` ⇒ both are set. |
 | Reopen needs a reason | `ck_log_reopen_request_reason` | `btrim(reason) <> ''` |
+| A rejection says why (V7) | `ck_log_reopen_request_decision_note` | `PENDING` ⇒ `decision_note IS NULL`; `APPROVED` ⇒ any; `REJECTED` ⇒ not blank after `btrim`. |
 | One open reopen request per log | `uk_log_reopen_request_pending` | Partial unique index `ON log_reopen_request (daily_log_id) WHERE status = 'PENDING'`. Any number of `APPROVED`/`REJECTED` requests per log; a second `PENDING` one fails with `23505`. |
 | Completion time only when done | `ck_corrective_action_completed` | `(status = 'DONE') = (completed_at IS NOT NULL)` |
 | Decided draft records the reviewer | `ck_incident_draft_review` | `status IN ('PENDING_REVIEW','NEEDS_MANUAL_INPUT') OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)` |
@@ -428,6 +472,7 @@ violation raises SQLSTATE `23514` (check), `23505` (unique) or `23503` (foreign 
 | Dates in order | `ck_site_dates`, `ck_work_entry_times`, `ck_log_reopen_request_dates` | end after start (site: `>=`; work entry: `>`); decision not before request. |
 | Notification links stay inside the application | `ck_notification_link_relative` | `link IS NULL OR (link LIKE '/%' AND link NOT LIKE '//%')` |
 | Notification has a title | `ck_notification_title` | `btrim(title) <> ''` |
+| Body arguments only with a body key (V7) | `ck_notification_body_args` | `body_args IS NULL OR body_key IS NOT NULL` |
 | Case-insensitive unique email | `ck_app_user_email_lower` + `uk_app_user_email` | `email = lower(email)` |
 
 Not enforced by the database (service only): that `site.manager_id` is an active `SITE_MANAGER`,
@@ -559,6 +604,8 @@ bypass triggers with `session_replication_role = replica`.
 
 Tested in `AuditAppendOnlyTriggerTests` (insert allowed; update, delete and truncate rejected on
 each table; rewriting a revision's author, deleting a revision and `TRUNCATE ... CASCADE` rejected).
+
+V7 attaches the same guard function to `domain_action` ([table reference](#domain_action-v7--recorded-domain-actions)).
 
 ## Demo data (V4)
 
