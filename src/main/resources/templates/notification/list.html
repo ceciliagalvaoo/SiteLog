@@ -43,7 +43,7 @@
 			</span>
 			<div class="notice-item__body">
 				<h2 class="notice-item__title" th:text="#{${'notification.type.' + type}}">Daily log not signed off</h2>
-				<p class="text-muted" th:text="${n.body}">ZG-01 · log of 29 Oct 2026 is still a draft</p>
+				<p class="text-muted" th:text="${n.bodyKey != null} ? ${#messages.msgWithParams(n.bodyKey, n.bodyArgsArray())} : ${n.body}">ZG-01 · log of 29 Oct 2026 is still a draft</p>
 				<p class="notice-item__meta">
 					<time th:datetime="${n.createdAt}" th:text="${#temporals.format(n.createdAt, #messages.msg('format.datetime'))}">30 Oct 2026, 07:00</time>
 					· <span th:text="${n.read} ? #{notifications.status.read} : #{notifications.status.unread}">Unread</span>

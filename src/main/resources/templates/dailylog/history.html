@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<!--/*
+  Revision history of a daily log (AR1 audit trail, ADR-0003). No frame of its own in the
+  prototype: built from the daily log detail layout (header, record | side panel) and the
+  Data table component. Route: GET /daily-logs/{id}/history, every signed-in user.
+  Model: history (DailyLogHistory), contextTitle.
+    history.log            DailyLogHeader (id, siteId, siteCode, siteName, logDate, status, version)
+    history.revision       current reopen counter
+    history.revisions      List<RevisionView>, newest first:
+                             revision, changedAt, username (e-mail or 'system'), userName (or null),
+                             changes: List<EntityChange> (entity DAILY_LOG|WORK_ENTRY|CREW_ASSIGNMENT,
+                             changeType ADDED|MODIFIED|DELETED, label, fields: List<FieldChange>
+                             (labelKey, before, after, valueKeyPrefix - set for enum values))
+    history.reopenRequests List<ReopenRequestView>, newest first
+    history.actions        List<DomainActionView> (messageKey, actorName, occurredAt), oldest first
+  Each change shows a before / after table: the old value struck through on red, the new value on
+  green (the words "Before" / "After" are the column headers, so colour is not the only signal).
+  Enum values are translated (#{prefix + value}); other values are printed as stored.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
+<head><title th:text="#{history.title} + ' · ' + ${#temporals.format(history.log.logDate, #messages.msg('format.date'))} + ' · ' + #{app.name}">Revision history · SiteLog</title></head>
+<body>
+<div id="content" class="stack" th:with="log=${history.log}, day=${#temporals.format(history.log.logDate, #messages.msg('format.date'))}">
+	<nav class="breadcrumbs" th:aria-label="#{nav.label}">
+		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<a th:href="@{/daily-logs/{id}(id=${log.id})}" th:text="${day}">28 Oct 2026</a>
+		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
+		<span aria-current="page" th:text="#{history.title}">Revision history</span>
+	</nav>
+
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{dailyLog.detail.eyebrow(${log.siteCode})}">Daily log · ZG-01</p>
+			<h1 th:text="#{history.title}">Revision history</h1>
+			<p class="lead" th:text="#{history.lead(${day}, ${history.revision})}">28 Oct 2026 · revision 1</p>
+		</div>
+		<div class="page-header__actions page-header__actions--center">
+			<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+			<a class="btn btn--secondary" th:href="@{/daily-logs/{id}(id=${log.id})}">
+				<svg th:replace="~{fragments/icon :: icon('arrow-left')}"></svg>
+				<span th:text="#{history.back}">Back to the log</span>
+			</a>
+		</div>
+	</div>
+
+	<div class="detail-grid">
+		<div class="detail-grid__main">
+			<section class="card" aria-labelledby="changes-title">
+				<div class="card__header">
+					<p class="eyebrow" th:text="#{history.revisions.eyebrow}">Audit trail</p>
+					<h2 id="changes-title" th:text="#{history.revisions.title}">Data changes</h2>
+					<p class="card__subtitle" th:text="#{history.revisions.subtitle}">Every saved change to the log, its work entries and crew rows, newest first.</p>
+				</div>
+				<p class="text-muted" th:if="${#lists.isEmpty(history.revisions)}" th:text="#{history.revisions.empty}">No recorded changes yet.</p>
+
+				<article class="revision" th:each="rev : ${history.revisions}">
+					<header class="revision__head">
+						<span class="revision__number" th:text="'#' + ${rev.revision}" th:title="#{history.revision.number(${rev.revision})}">#12</span>
+						<div class="entry-view__title">
+							<h3 th:text="${rev.userName} ?: (${rev.username == 'system'} ? #{audit.actor.system} : ${rev.username})">Marko Kovačević</h3>
+							<p class="text-muted">
+								<time th:datetime="${rev.changedAt}" th:text="${#temporals.format(rev.changedAt, #messages.msg('format.datetime'))}">29 Oct 2026, 18:02</time>
+							</p>
+						</div>
+					</header>
+					<div class="revision__change" th:each="c : ${rev.changes}">
+						<p class="revision__label">
+							<strong th:text="#{${'history.entity.' + c.entity}}">Work entry</strong>
+							<span th:if="${c.label != null}" th:text="${c.label}">Concrete pour level 3 slab</span>
+							<span class="change-type" th:classappend="${'change-type--' + #strings.toLowerCase(c.changeType)}"
+							      th:text="#{${'history.change.' + c.changeType}}">changed</span>
+						</p>
+						<table class="table table--diff table--stack" th:unless="${#lists.isEmpty(c.fields)}">
+							<thead th:replace="~{fragments/table-row :: header(${ {'history.column.field', 'history.column.before', 'history.column.after'} })}"></thead>
+							<tbody>
+							<tr th:each="f : ${c.fields}"
+							    th:with="dp=#{format.date}, tp=#{format.time}, dtp=#{format.datetime},
+							             before=${f.before == null} ? null : (${f.valueKeyPrefix != null} ? #{${f.valueKeyPrefix + f.before}} : ${f.display(f.before, dp, tp, dtp, #locale)}),
+							             after=${f.after == null} ? null : (${f.valueKeyPrefix != null} ? #{${f.valueKeyPrefix + f.after}} : ${f.display(f.after, dp, tp, dtp, #locale)})">
+								<td class="diff-field" th:attr="data-label=#{history.column.field}" th:text="#{${f.labelKey}}">Weather</td>
+								<td class="diff-before" th:classappend="${before == null} ? 'diff-empty'" th:attr="data-label=#{history.column.before}"
+								    th:text="${before} ?: #{history.value.none}">Rain</td>
+								<td class="diff-after" th:classappend="${after == null} ? 'diff-empty'" th:attr="data-label=#{history.column.after}"
+								    th:text="${after} ?: #{history.value.none}">Cloudy</td>
+							</tr>
+							</tbody>
+						</table>
+					</div>
+				</article>
+			</section>
+		</div>
+
+		<aside class="detail-grid__side">
+			<section class="card" aria-labelledby="actions-title">
+				<h2 id="actions-title" th:text="#{history.actions.title}">Actions</h2>
+				<p class="text-muted" th:if="${#lists.isEmpty(history.actions)}" th:text="#{history.actions.empty}">No recorded actions yet.</p>
+				<ol class="timeline" th:unless="${#lists.isEmpty(history.actions)}">
+					<li class="timeline__item is-done" th:each="a : ${history.actions}">
+						<span class="timeline__title" th:text="#{${a.messageKey}}">Signed off</span>
+						<span class="timeline__meta">
+							<th:block th:text="${a.actorName} ?: #{audit.actor.system}">Marko Kovačević</th:block> ·
+							<time th:datetime="${a.occurredAt}" th:text="${#temporals.format(a.occurredAt, #messages.msg('format.datetime'))}">29 Oct 2026, 18:02</time>
+						</span>
+					</li>
+				</ol>
+			</section>
+
+			<section class="card" aria-labelledby="reopens-title">
+				<h2 id="reopens-title" th:text="#{history.reopens.title}">Reopen requests</h2>
+				<p class="text-muted" th:if="${#lists.isEmpty(history.reopenRequests)}" th:text="#{history.reopens.empty}">This log has no reopen requests.</p>
+				<ol class="timeline" th:unless="${#lists.isEmpty(history.reopenRequests)}">
+					<li class="timeline__item" th:each="r : ${history.reopenRequests}"
+					    th:classappend="${r.pending()} ? 'is-current' : 'is-done'">
+						<span th:replace="~{fragments/chip :: status('reopen', ${r.status})}"></span>
+						<span class="timeline__note" th:text="${r.reason}">Concrete pour hours were recorded for the wrong crew.</span>
+						<span class="timeline__meta" th:text="#{reopen.requestedBy(${r.requestedByName}, ${#temporals.format(r.requestedAt, #messages.msg('format.datetime'))})}">Requested by Marko Kovačević · 29 Oct 2026, 08:15</span>
+						<span class="timeline__meta" th:if="${r.decidedByName != null}"
+						      th:text="#{reopen.decidedBy(${r.decidedByName}, ${#temporals.format(r.decidedAt, #messages.msg('format.datetime'))})}">Decided by Ivana Babić · 29 Oct 2026, 09:00</span>
+						<span class="timeline__note" th:if="${r.decisionNote != null}" th:text="${r.decisionNote}">Note</span>
+					</li>
+				</ol>
+			</section>
+		</aside>
+	</div>
+</div>
+</body>
+</html>

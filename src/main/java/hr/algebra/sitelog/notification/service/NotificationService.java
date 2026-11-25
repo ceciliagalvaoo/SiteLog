@@ -18,7 +18,7 @@ import hr.algebra.sitelog.user.service.CurrentUserProvider;
 /**
  * In-app notifications of the current user (bell in the top bar). Every query filters by the
  * current user, so nobody can read or mark someone else's notification. Creating notifications
- * (scheduled jobs, reopen requests, high-severity incidents) comes with those features (M3/M4).
+ * is {@link NotificationPublisher}'s job (called by other services and, in M4, by the jobs).
  */
 @Service
 @Transactional(readOnly = true)
@@ -71,8 +71,8 @@ public class NotificationService {
 	}
 
 	private NotificationView toView(Notification n) {
-		return new NotificationView(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getLink(),
-				n.getCreatedAt().atZone(clock.getZone()), n.isRead());
+		return new NotificationView(n.getId(), n.getType(), n.getTitle(), n.getBody(), n.getBodyKey(),
+				n.getBodyArgs(), n.getLink(), n.getCreatedAt().atZone(clock.getZone()), n.isRead());
 	}
 
 }

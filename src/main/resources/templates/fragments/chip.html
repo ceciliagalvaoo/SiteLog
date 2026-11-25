@@ -18,6 +18,7 @@
      role     ADMIN, SITE_MANAGER, SAFETY_SUPERVISOR, INSPECTOR  purple, blue, yellow, neutral
      site     ACTIVE, FINISHED                                   teal, grey
      draft    PENDING_REVIEW, NEEDS_MANUAL_INPUT, ACCEPTED, REJECTED  lavender, amber, green, grey
+     reopen   PENDING, APPROVED, REJECTED                       amber, green, grey
   Examples:
      <span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
      <span th:replace="~{fragments/chip :: status('user', ${user.active} ? 'ACTIVE' : 'INACTIVE')}"></span>

@@ -1,5 +1,6 @@
 package hr.algebra.sitelog.user.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,13 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 	 */
 	@EntityGraph(attributePaths = "role")
 	List<AppUser> findByRole_NameAndActiveTrueOrderByFullNameAsc(RoleName roleName);
+
+	/** Names for the revision history: {@code revinfo.username} stores the e-mail. */
+	List<AppUser> findByEmailIn(Collection<String> emails);
+
+	/** Assignee options of the corrective action form: active users with one of the roles, by name. */
+	@EntityGraph(attributePaths = "role")
+	List<AppUser> findByRole_NameInAndActiveTrueOrderByFullNameAsc(Collection<RoleName> roleNames);
 
 	boolean existsByEmailIgnoreCase(String email);
 

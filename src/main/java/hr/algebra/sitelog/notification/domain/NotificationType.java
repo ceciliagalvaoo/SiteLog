@@ -9,5 +9,15 @@ public enum NotificationType {
 	/** Domain event: a site manager asked to reopen a signed-off log. Sent to safety supervisors. */
 	REOPEN_REQUESTED,
 	/** Domain event: a HIGH or CRITICAL incident was reported. Sent to safety supervisors. */
-	HIGH_SEVERITY_INCIDENT
+	HIGH_SEVERITY_INCIDENT;
+
+	/** Message key of the title, {@code notification.type.<TYPE>}. */
+	public String titleKey() {
+		return "notification.type." + name();
+	}
+
+	/** Message key of the body of notifications created since V7, {@code notification.body.<TYPE>}. */
+	public String bodyKey() {
+		return "notification.body." + name();
+	}
 }

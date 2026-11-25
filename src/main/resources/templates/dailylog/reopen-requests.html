@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--/*
+  Pending reopen requests on all sites, oldest first: the safety supervisor's queue (AR1). No frame
+  of its own in the prototype: the incident list layout (Data table, stacked cards below 640 px)
+  with the "reopen pending" banner's content per row. Route: GET /reopen-requests.
+  Model: requests (List<PendingReopenItem>: requestId, dailyLogId, siteCode, siteName, logDate,
+  reason, requestedByName, requestedAt).
+  Readable by every signed-in user; the menu links it for SAFETY_SUPERVISOR only. Approve / Reject
+  happen on the daily log detail (p. 8), where the supervisor sees the record being reopened.
+*/-->
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'reopen')}">
+<head><title th:text="#{reopen.queue.title} + ' · ' + #{app.name}">Reopen requests · SiteLog</title></head>
+<body>
+<div id="content" class="stack">
+	<div class="page-header">
+		<div class="page-header__text">
+			<p class="eyebrow" th:text="#{reopen.queue.eyebrow}">Supervisor review</p>
+			<h1 th:text="#{reopen.queue.title}">Reopen requests</h1>
+			<p class="lead" th:text="#{reopen.queue.lead(${#lists.size(requests)})}">2 pending</p>
+		</div>
+	</div>
+
+	<div class="card" th:if="${#lists.isEmpty(requests)}">
+		<div th:replace="~{fragments/table-row :: emptyState(#{reopen.queue.empty.title}, #{reopen.queue.empty}, null, null)}"></div>
+	</div>
+
+	<div class="table-wrap" th:unless="${#lists.isEmpty(requests)}">
+		<table class="table table--stack table--queue">
+			<caption class="visually-hidden" th:text="#{reopen.queue.title}">Reopen requests</caption>
+			<thead th:replace="~{fragments/table-row :: header(${ {'reopen.queue.log', 'reopen.field.reason', 'reopen.field.requestedBy', ''} })}"></thead>
+			<tbody>
+			<tr th:each="r : ${requests}" th:with="day=${#temporals.format(r.logDate, #messages.msg('format.date'))}">
+				<td class="cell--title" th:attr="data-label=#{reopen.queue.log}">
+					<span class="cell-title">
+						<a th:href="@{/daily-logs/{id}(id=${r.dailyLogId})}" th:text="${day}">27 Oct 2026</a>
+						<span class="cell-title__sub" th:text="${r.siteCode} + ' · ' + ${r.siteName}">ST-01 · Hotel Žnjan</span>
+					</span>
+				</td>
+				<td th:replace="~{fragments/table-row :: cell(#{reopen.field.reason}, ${r.reason}, 'strong')}"></td>
+				<td th:replace="~{fragments/table-row :: cell(#{reopen.field.requestedBy}, ${r.requestedByName} + ' · ' + ${#temporals.format(r.requestedAt, #messages.msg('format.datetime'))}, null)}"></td>
+				<td class="cell--row-actions" th:attr="data-label=#{common.actions}">
+					<div class="row-actions">
+						<a class="btn btn--secondary btn--sm" th:href="@{/daily-logs/{id}(id=${r.dailyLogId})}"
+						   th:attr="aria-label=#{reopen.queue.review.label(${day}, ${r.siteCode})}" th:text="#{reopen.queue.review}">Review</a>
+					</div>
+				</td>
+			</tr>
+			</tbody>
+		</table>
+	</div>
+</div>
+</body>
+</html>

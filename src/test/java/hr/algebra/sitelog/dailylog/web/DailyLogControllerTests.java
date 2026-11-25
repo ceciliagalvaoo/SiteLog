@@ -58,6 +58,7 @@ import hr.algebra.sitelog.dailylog.service.CrewAssignmentView;
 import hr.algebra.sitelog.dailylog.service.DailyLogCommand;
 import hr.algebra.sitelog.dailylog.service.DailyLogDetails;
 import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.LogReopenService;
 import hr.algebra.sitelog.dailylog.service.WorkEntryView;
 import hr.algebra.sitelog.site.service.SiteListItem;
 import hr.algebra.sitelog.site.service.SiteService;
@@ -85,6 +86,10 @@ class DailyLogControllerTests extends WebSliceTest {
 
 	@MockitoBean
 	CrewService crewService;
+
+	/** The detail page also shows the reopen panel (AR1); unstubbed it answers null (no panel). */
+	@MockitoBean
+	LogReopenService logReopenService;
 
 	@BeforeEach
 	void site() {

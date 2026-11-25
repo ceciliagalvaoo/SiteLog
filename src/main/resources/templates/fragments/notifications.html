@@ -13,7 +13,8 @@
                       id        Long
                       type      NotificationType (or its name): CORRECTIVE_ACTION_OVERDUE,
                                 DAILY_LOG_UNSIGNED, REOPEN_REQUESTED, HIGH_SEVERITY_INCIDENT
-                      body      String (detail line, already in the data's language)
+                      body      String (free-text body of rows created before V7)
+                      bodyKey   String message key of the body (V7+), rendered with bodyArgsArray()
                       link      String, app-relative URL of the record (may be null)
                       createdAt LocalDateTime or ZonedDateTime (not Instant: #temporals needs a zone)
                     The title comes from the type (message notification.type.<TYPE>) so it follows
@@ -55,7 +56,7 @@
 				<div class="bell__item-body">
 					<a class="bell__item-title" th:href="${n.link != null} ? @{${n.link}} : @{/notifications}"
 					   th:text="#{${'notification.type.' + type}}">Corrective action overdue</a>
-					<span class="bell__item-text" th:text="${n.body}">Clear emergency access route · Riverside Tower · due yesterday</span>
+					<span class="bell__item-text" th:text="${n.bodyKey != null} ? ${#messages.msgWithParams(n.bodyKey, n.bodyArgsArray())} : ${n.body}">Clear emergency access route · Riverside Tower · due yesterday</span>
 					<span class="bell__item-meta">
 						<time th:datetime="${n.createdAt}"
 						      th:text="${#temporals.format(n.createdAt, #messages.msg('format.datetime'))}">7 Nov 2026, 08:14</time>

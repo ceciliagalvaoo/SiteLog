@@ -52,6 +52,13 @@ public class LogReopenRequest extends BaseEntity {
 	@Column(name = "status", nullable = false, length = 10)
 	private ReopenStatus status = ReopenStatus.PENDING;
 
+	/**
+	 * The supervisor's reason (V7): mandatory for REJECTED, optional for APPROVED, null while
+	 * PENDING ({@code ck_log_reopen_request_decision_note}).
+	 */
+	@Column(name = "decision_note")
+	private String decisionNote;
+
 	protected LogReopenRequest() {
 	}
 
@@ -64,9 +71,19 @@ public class LogReopenRequest extends BaseEntity {
 
 	/** Records the decision; {@code ck_log_reopen_request_decision} requires both fields together. */
 	public void decide(ReopenStatus decision, AppUser decidedBy, Instant decidedAt) {
+		decide(decision, decidedBy, decidedAt, null);
+	}
+
+	/** Records the decision with the supervisor's note (mandatory for a rejection, checked by the service). */
+	public void decide(ReopenStatus decision, AppUser decidedBy, Instant decidedAt, String note) {
 		this.status = decision;
 		this.approvedBy = decidedBy;
 		this.decidedAt = decidedAt;
+		this.decisionNote = note;
+	}
+
+	public boolean isPending() {
+		return status == ReopenStatus.PENDING;
 	}
 
 	public DailyLog getDailyLog() {
@@ -95,6 +112,10 @@ public class LogReopenRequest extends BaseEntity {
 
 	public ReopenStatus getStatus() {
 		return status;
+	}
+
+	public String getDecisionNote() {
+		return decisionNote;
 	}
 
 }

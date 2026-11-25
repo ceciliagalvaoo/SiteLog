@@ -25,6 +25,7 @@ import hr.algebra.sitelog.crew.service.CrewService;
 import hr.algebra.sitelog.dailylog.domain.Weather;
 import hr.algebra.sitelog.dailylog.service.DailyLogDetails;
 import hr.algebra.sitelog.dailylog.service.DailyLogService;
+import hr.algebra.sitelog.dailylog.service.LogReopenService;
 import hr.algebra.sitelog.site.service.SiteListItem;
 import hr.algebra.sitelog.site.service.SiteService;
 
@@ -45,26 +46,51 @@ public class DailyLogController {
 
 	static final String FORM = "dailyLogForm";
 
+	/** Model name of the "request reopen" modal form (also used by {@link LogReopenController}). */
+	static final String REOPEN_FORM = "reopenForm";
+
+	/** Model name of the supervisor's "reject reopen" modal form. */
+	static final String REJECT_FORM = "rejectForm";
+
 	private final DailyLogService dailyLogService;
 
 	private final SiteService siteService;
 
 	private final CrewService crewService;
 
+	private final LogReopenService reopenService;
+
 	private final Clock clock;
 
 	public DailyLogController(DailyLogService dailyLogService, SiteService siteService, CrewService crewService,
-			Clock clock) {
+			LogReopenService reopenService, Clock clock) {
 		this.dailyLogService = dailyLogService;
 		this.siteService = siteService;
 		this.crewService = crewService;
+		this.reopenService = reopenService;
 		this.clock = clock;
 	}
 
 	@GetMapping("/daily-logs/{id}")
 	public String detail(@PathVariable Long id, Model model) {
+		return detail(model, dailyLogService, reopenService, id);
+	}
+
+	/**
+	 * Model of the detail page: {@code log}, {@code reopen} (pending request + history, AR1) and the
+	 * two modal forms. Shared with {@link LogReopenController}, which re-renders this page when a
+	 * modal was submitted with errors (the form already in the model, with its errors, is kept).
+	 */
+	static String detail(Model model, DailyLogService dailyLogService, LogReopenService reopenService, Long id) {
 		DailyLogDetails log = dailyLogService.getDetail(id);
 		model.addAttribute("log", log);
+		model.addAttribute("reopen", reopenService.panel(id));
+		if (!model.containsAttribute(REOPEN_FORM)) {
+			model.addAttribute(REOPEN_FORM, ReopenRequestForm.forVersion(log.version()));
+		}
+		if (!model.containsAttribute(REJECT_FORM)) {
+			model.addAttribute(REJECT_FORM, new ReopenRejectForm());
+		}
 		model.addAttribute("contextTitle", log.siteName());
 		return DETAIL_VIEW;
 	}

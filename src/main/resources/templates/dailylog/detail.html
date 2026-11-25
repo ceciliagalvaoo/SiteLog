@@ -1,15 +1,27 @@
 <!DOCTYPE html>
 <!--/*
-  Daily log detail (Figma p. 10 Draft, p. 5 Signed off and locked, p. 9 Reopened).
+  Daily log detail (Figma p. 10 Draft, p. 5 Signed off and locked, p. 8 reopen pending
+  (Safety Supervisor review), p. 9 Reopened, pp. 6-7 Request reopen modal with its error).
   Model: log (DailyLogDetails: status, editable, deletable, canSignOff(), work entries with crew rows),
-  contextTitle.
+  reopen (ReopenPanel: pending, history newest first, canRequest; may be null), reopenForm (reason,
+  version), rejectForm (reason), reopenModal / rejectModal (true = render that modal open after a
+  POST with errors), contextTitle.
   - Draft / Reopened (log.editable): Edit log, Sign off (confirmation modal), per-entry and per-row
     edit / remove, Add work entry, Add crew. Delete only when log.deletable (a Draft without links).
   - Signed off: read-only, lock notice, no editing control at all (AR1).
-  Every POST carries the version shown on this page (optimistic locking -> 409 page when stale).
-  Roles: every signed-in user reads the log; the editing controls (edit, sign off, delete, work
-  entries, crew rows) need canEdit = the SITE_MANAGER of the log's site (hasRole + @siteAccess)
-  AND an editable log. Hiding is cosmetic: the services check the same rule with @PreAuthorize.
+  - Reopen (AR1):
+      Request reopen  SIGNED_OFF, nothing pending, SITE_MANAGER of the site (reopen.canRequest() and
+                      @siteAccess.canManageLog) -> modal with the mandatory reason ->
+                      POST /daily-logs/{id}/reopen-requests
+      Pending         amber banner for everyone; Approve / Reject only for SAFETY_SUPERVISOR ->
+                      POST .../reopen-requests/{requestId}/approve | .../reject (reason required, modal)
+      Reopened        amber banner with the approved request: reason, requester, approver
+  - Side panel: every reopen request of the log (status chip, reason, who asked, who decided) and
+    the link to the revision history (GET /daily-logs/{id}/history), for every signed-in user.
+  Roles: every signed-in user reads the log; the editing controls need canEdit = the SITE_MANAGER
+  of the log's site (hasRole + @siteAccess) AND an editable log. Hiding is cosmetic: the services
+  check the same rules with @PreAuthorize. Every POST carries the version shown on this page
+  (optimistic locking -> 409 page when stale).
 */-->
 <html xmlns:th="http://www.thymeleaf.org"
       th:replace="~{layout :: layout(~{::title}, ~{::#content}, 'sites')}">
@@ -17,7 +29,11 @@
 <body>
 <div id="content" class="stack"
      th:with="dateFmt=#{format.date}, day=${#temporals.format(log.logDate, #messages.msg('format.date'))},
-              canEdit=${log.editable and #authorization.expression('hasRole(''SITE_MANAGER'')') and @siteAccess.canManageLog(log.id)}">
+              isOwnManager=${#authorization.expression('hasRole(''SITE_MANAGER'')') and @siteAccess.canManageLog(log.id)},
+              isSupervisor=${#authorization.expression('hasRole(''SAFETY_SUPERVISOR'')')},
+              canEdit=${log.editable and isOwnManager},
+              canRequestReopen=${reopen != null and reopen.canRequest() and isOwnManager},
+              canDecideReopen=${reopen != null and reopen.hasPending() and isSupervisor}">
 	<nav class="breadcrumbs" th:aria-label="#{nav.sites}">
 		<a th:href="@{/sites/{id}(id=${log.siteId}, tab='logs')}" th:text="${log.siteName}">Residential Complex Lanište</a>
 		<span class="breadcrumbs__sep" aria-hidden="true">/</span>
@@ -35,8 +51,12 @@
 		</div>
 		<div class="page-header__actions page-header__actions--center">
 			<span th:replace="~{fragments/chip :: status('log', ${log.status})}"></span>
+			<button type="button" class="btn btn--secondary" th:if="${canRequestReopen}" data-modal-open="reopen-modal">
+				<svg th:replace="~{fragments/icon :: icon('reopen')}"></svg>
+				<span th:text="#{reopen.request}">Request reopen</span>
+			</button>
 			<th:block th:if="${canEdit}">
-				<button type="button" class="btn btn--ghost" th:if="${log.deletable}" data-modal-open="delete-log"
+				<button type="button" class="btn btn--ghost btn--ghost-danger" th:if="${log.deletable}" data-modal-open="delete-log"
 				        th:text="#{dailyLog.detail.delete}">Delete log</button>
 				<a class="btn btn--secondary" th:href="@{/daily-logs/{id}/edit(id=${log.id})}" th:text="#{dailyLog.detail.edit}">Edit log</a>
 				<button type="button" class="btn btn--primary" data-modal-open="sign-off-log" th:disabled="${!log.canSignOff()}"
@@ -46,99 +66,151 @@
 		</div>
 	</div>
 
-	<th:block th:if="${log.status.name() == 'SIGNED_OFF'}">
-		<div class="notice notice--locked" role="note">
-			<svg th:replace="~{fragments/icon :: icon('lock')}"></svg>
-			<div>
-				<strong th:text="#{dailyLog.detail.locked.title}">Signed off and locked</strong>
-				<p th:text="#{dailyLog.detail.locked.body}">This log can no longer be changed.</p>
-			</div>
+	<!--/* p. 8: a reopen request waits for a safety supervisor; the log stays locked meanwhile */-->
+	<div class="notice notice--warning" role="note" th:if="${reopen != null and reopen.hasPending()}">
+		<span class="notice__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('reopen')}"></svg></span>
+		<div class="notice__text">
+			<strong th:text="#{reopen.pending.banner(${reopen.pending.requestedByName})}">Reopen requested by Luka Matić</strong>
+			<span class="notice__meta" th:text="#{reopen.pending.meta(${#temporals.format(reopen.pending.requestedAt, #messages.msg('format.datetime'))})}">29 Oct 2026, 07:40 · Safety supervisor review</span>
+			<p><strong th:text="#{reopen.reasonLabel}">Reason:</strong> <th:block th:text="${reopen.pending.reason}">Worker count for the scaffolding crew is wrong (6, not 5).</th:block></p>
+			<p th:text="#{reopen.pending.locked}">The signed record remains locked until this request is reviewed.</p>
 		</div>
-	</th:block>
-	<th:block th:if="${log.status.name() == 'REOPENED'}">
-		<div th:replace="~{fragments/flash :: flash('info', #{dailyLog.detail.reopened.title}, #{dailyLog.detail.reopened.body})}"></div>
-	</th:block>
+		<div class="notice__actions" th:if="${canDecideReopen}">
+			<button type="button" class="btn btn--secondary" data-modal-open="reject-modal" th:text="#{reopen.reject}">Reject</button>
+			<form th:action="@{/daily-logs/{id}/reopen-requests/{r}/approve(id=${log.id}, r=${reopen.pending.id})}" method="post">
+				<button type="submit" class="btn btn--primary" th:text="#{reopen.approve}">Approve reopen</button>
+			</form>
+		</div>
+	</div>
+
+	<!--/* p. 5: signed off and locked (no pending request) */-->
+	<div class="notice notice--locked" role="note" th:if="${log.status.name() == 'SIGNED_OFF' and (reopen == null or !reopen.hasPending())}">
+		<svg th:replace="~{fragments/icon :: icon('lock')}"></svg>
+		<div class="notice__text">
+			<strong th:text="#{dailyLog.detail.locked.title}">Signed off and locked</strong>
+			<p th:text="#{dailyLog.detail.locked.body}">This log can no longer be changed.</p>
+		</div>
+	</div>
+
+	<!--/* p. 9: reopened - why, who asked, who approved */-->
+	<div class="notice notice--warning" role="note" th:if="${log.status.name() == 'REOPENED'}"
+	     th:with="approved=${reopen != null ? reopen.history.^[status.name() == 'APPROVED'] : null}">
+		<span class="notice__icon" aria-hidden="true"><svg th:replace="~{fragments/icon :: icon('reopen')}"></svg></span>
+		<div class="notice__text">
+			<strong th:text="#{dailyLog.detail.reopened.title}">Reopened for correction</strong>
+			<span class="notice__meta" th:if="${approved != null}"
+			      th:text="#{reopen.approved.meta(${approved.requestedByName}, ${approved.decidedByName})}">Requested by Marko Kovačević · Approved by Ivana Babić</span>
+			<p th:if="${approved != null}"><strong th:text="#{reopen.reasonLabel}">Reason:</strong> <th:block th:text="${approved.reason}">Concrete pour hours were recorded for the wrong crew.</th:block></p>
+			<p th:text="#{dailyLog.detail.reopened.body}">Make the corrections and sign the log off again.</p>
+		</div>
+	</div>
 	<p class="text-muted" id="sign-off-hint" th:if="${canEdit and !log.canSignOff()}" th:text="#{dailyLog.flash.signOffEmpty}">Add at least one work entry before signing off.</p>
 
-	<section class="card">
-		<div class="card__header">
-			<p class="eyebrow" th:text="#{dailyLog.detail.overview}">Log overview</p>
-			<h2 th:text="#{dailyLog.detail.shift}">Shift details</h2>
-		</div>
-		<dl class="facts facts--divided">
-			<div><dt th:text="#{dailyLog.field.date}">Date</dt><dd th:text="${day}">29 Oct 2026</dd></div>
-			<div><dt th:text="#{dailyLog.field.weather}">Weather</dt>
-				<dd th:text="${log.weather != null} ? #{${'weather.' + log.weather}} : #{common.notSet}">Cloudy</dd></div>
-			<div><dt th:text="#{dailyLog.detail.crews}">Crews</dt><dd th:text="${log.crewCount()}">3</dd></div>
-			<div><dt th:text="#{dailyLog.detail.totalWorkers}">Total workers</dt>
-				<dd th:text="${#lists.isEmpty(log.workEntries)} ? 0 : ${#aggregates.sum(log.workEntries.![totalWorkers()])}">14</dd></div>
-			<div><dt th:text="#{dailyLog.detail.totalHours}">Crew hours</dt>
-				<dd th:text="${#numbers.formatDecimal(log.totalHours(), 1, 'DEFAULT', 1, 'DEFAULT')}">24.0</dd></div>
-		</dl>
-		<div>
-			<h3 class="facts__label" th:text="#{dailyLog.field.notes}">Site notes</h3>
-			<p th:text="${#strings.isEmpty(log.notes)} ? #{dailyLog.detail.noNotes} : ${log.notes}">Level 3 slab curing.</p>
-		</div>
-	</section>
-
-	<section class="card">
-		<div class="card__header card__header--row">
-			<div>
-				<p class="eyebrow" th:text="#{dailyLog.detail.work.eyebrow}">Work completed</p>
-				<h2 th:text="#{dailyLog.detail.work.count(${#lists.size(log.workEntries)})}">2 work entries</h2>
-			</div>
-			<a class="btn btn--secondary" th:if="${canEdit}" th:href="@{/daily-logs/{id}/work-entries/new(id=${log.id})}">
-				<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
-				<span th:text="#{dailyLog.form.addEntry}">Add work entry</span>
-			</a>
-		</div>
-
-		<p class="text-muted" th:if="${#lists.isEmpty(log.workEntries)}" th:text="#{dailyLog.detail.work.empty}">No work entries yet.</p>
-
-		<article class="entry-view" th:each="entry, e : ${log.workEntries}">
-			<header class="entry-view__head">
-				<span class="entry__number" th:text="${#numbers.formatInteger(e.count, 2)}">01</span>
-				<div class="entry-view__title">
-					<h3 th:text="${entry.description}">Formwork for level 3 slab</h3>
-					<p class="text-muted">
-						<th:block th:text="${entry.location}">Level 3</th:block><th:block th:if="${entry.location != null and entry.startTime != null}"> · </th:block><th:block
-						    th:if="${entry.startTime != null}" th:text="${#temporals.format(entry.startTime, #messages.msg('format.time'))} + (${entry.endTime != null} ? '–' + ${#temporals.format(entry.endTime, #messages.msg('format.time'))} : '')">07:00–15:00</th:block>
-					</p>
+	<div class="detail-grid">
+		<div class="detail-grid__main">
+			<section class="card">
+				<div class="card__header">
+					<p class="eyebrow" th:text="#{dailyLog.detail.overview}">Log overview</p>
+					<h2 th:text="#{dailyLog.detail.shift}">Shift details</h2>
 				</div>
-				<div class="entry-view__actions" th:if="${canEdit}">
-					<a class="btn btn--ghost" th:href="@{/daily-logs/{l}/work-entries/{w}/edit(l=${log.id}, w=${entry.id})}" th:text="#{workEntry.edit}">Edit entry</a>
-					<form th:action="@{/daily-logs/{l}/work-entries/{w}/delete(l=${log.id}, w=${entry.id})}" method="post">
-						<input type="hidden" name="logVersion" th:value="${log.version}">
-						<button type="submit" class="btn btn--ghost btn--ghost-danger"
-						        th:attr="aria-label=#{workEntry.remove.label(${e.count})}" th:text="#{dailyLog.detail.removeEntry}">Remove entry</button>
-					</form>
+				<dl class="facts facts--divided">
+					<div><dt th:text="#{dailyLog.field.date}">Date</dt><dd th:text="${day}">29 Oct 2026</dd></div>
+					<div><dt th:text="#{dailyLog.field.weather}">Weather</dt>
+						<dd th:text="${log.weather != null} ? #{${'weather.' + log.weather}} : #{common.notSet}">Cloudy</dd></div>
+					<div><dt th:text="#{dailyLog.detail.crews}">Crews</dt><dd th:text="${log.crewCount()}">3</dd></div>
+					<div><dt th:text="#{dailyLog.detail.totalWorkers}">Total workers</dt>
+						<dd th:text="${#lists.isEmpty(log.workEntries)} ? 0 : ${#aggregates.sum(log.workEntries.![totalWorkers()])}">14</dd></div>
+					<div><dt th:text="#{dailyLog.detail.totalHours}">Crew hours</dt>
+						<dd th:text="${#numbers.formatDecimal(log.totalHours(), 1, 'DEFAULT', 1, 'DEFAULT')}">24.0</dd></div>
+				</dl>
+				<div>
+					<h3 class="facts__label" th:text="#{dailyLog.field.notes}">Site notes</h3>
+					<p th:text="${#strings.isEmpty(log.notes)} ? #{dailyLog.detail.noNotes} : ${log.notes}">Level 3 slab curing.</p>
 				</div>
-			</header>
-			<ul class="entry-view__crews">
-				<li th:each="row : ${entry.crewAssignments}" class="crew-line">
-					<strong class="crew-line__name" th:text="${row.crewActive} ? ${row.crewName} : #{crewAssignment.inactive(${row.crewName})}">Kovač Formwork</strong>
-					<span th:text="#{dailyLog.detail.hours(${#numbers.formatDecimal(row.hoursWorked, 1, 'DEFAULT', 1, 'DEFAULT')})}">8.0 hrs</span>
-					<span th:text="#{dailyLog.detail.workers(${row.workerCount})}">6 workers</span>
-					<span class="crew-line__task" th:text="${row.task}">Formwork panels</span>
-					<span class="crew-line__actions" th:if="${canEdit}">
-						<a class="link-button" th:href="@{/daily-logs/{l}/crew-assignments/{c}/edit(l=${log.id}, c=${row.id})}"
-						   th:text="#{common.edit}" th:title="#{dailyLog.detail.editCrew}">Edit</a>
-						<form th:action="@{/daily-logs/{l}/crew-assignments/{c}/delete(l=${log.id}, c=${row.id})}" method="post">
-							<input type="hidden" name="logVersion" th:value="${log.version}">
-							<button type="submit" class="link-button link-button--danger" th:text="#{common.remove}"
-							        th:title="#{dailyLog.detail.removeCrew}">Remove</button>
-						</form>
-					</span>
-				</li>
-				<li class="crew-line crew-line--empty text-muted" th:if="${#lists.isEmpty(entry.crewAssignments)}" th:text="#{crewAssignment.none}">No crew assigned yet.</li>
-			</ul>
-			<div class="entry-view__foot" th:if="${canEdit}">
-				<a class="link-button link-button--success" th:href="@{/daily-logs/{l}/work-entries/{w}/crew-assignments/new(l=${log.id}, w=${entry.id})}">
-					+ <span th:text="#{dailyLog.detail.addCrew}">Add crew</span>
+			</section>
+
+			<section class="card">
+				<div class="card__header card__header--row">
+					<div>
+						<p class="eyebrow" th:text="#{dailyLog.detail.work.eyebrow}">Work completed</p>
+						<h2 th:text="#{dailyLog.detail.work.count(${#lists.size(log.workEntries)})}">2 work entries</h2>
+					</div>
+					<a class="btn btn--secondary" th:if="${canEdit}" th:href="@{/daily-logs/{id}/work-entries/new(id=${log.id})}">
+						<svg th:replace="~{fragments/icon :: icon('plus')}"></svg>
+						<span th:text="#{dailyLog.form.addEntry}">Add work entry</span>
+					</a>
+				</div>
+
+				<p class="text-muted" th:if="${#lists.isEmpty(log.workEntries)}" th:text="#{dailyLog.detail.work.empty}">No work entries yet.</p>
+
+				<article class="entry-view" th:each="entry, e : ${log.workEntries}">
+					<header class="entry-view__head">
+						<span class="entry__number" th:text="${#numbers.formatInteger(e.count, 2)}">01</span>
+						<div class="entry-view__title">
+							<h3 th:text="${entry.description}">Formwork for level 3 slab</h3>
+							<p class="text-muted">
+								<th:block th:text="${entry.location}">Level 3</th:block><th:block th:if="${entry.location != null and entry.startTime != null}"> · </th:block><th:block
+								    th:if="${entry.startTime != null}" th:text="${#temporals.format(entry.startTime, #messages.msg('format.time'))} + (${entry.endTime != null} ? '–' + ${#temporals.format(entry.endTime, #messages.msg('format.time'))} : '')">07:00–15:00</th:block>
+							</p>
+						</div>
+						<div class="entry-view__actions" th:if="${canEdit}">
+							<a class="btn btn--ghost" th:href="@{/daily-logs/{l}/work-entries/{w}/edit(l=${log.id}, w=${entry.id})}" th:text="#{workEntry.edit}">Edit entry</a>
+							<form th:action="@{/daily-logs/{l}/work-entries/{w}/delete(l=${log.id}, w=${entry.id})}" method="post">
+								<input type="hidden" name="logVersion" th:value="${log.version}">
+								<button type="submit" class="btn btn--ghost btn--ghost-danger"
+								        th:attr="aria-label=#{workEntry.remove.label(${e.count})}" th:text="#{dailyLog.detail.removeEntry}">Remove entry</button>
+							</form>
+						</div>
+					</header>
+					<ul class="entry-view__crews">
+						<li th:each="row : ${entry.crewAssignments}" class="crew-line">
+							<strong class="crew-line__name" th:text="${row.crewActive} ? ${row.crewName} : #{crewAssignment.inactive(${row.crewName})}">Kovač Formwork</strong>
+							<span th:text="#{dailyLog.detail.hours(${#numbers.formatDecimal(row.hoursWorked, 1, 'DEFAULT', 1, 'DEFAULT')})}">8.0 hrs</span>
+							<span th:text="#{dailyLog.detail.workers(${row.workerCount})}">6 workers</span>
+							<span class="crew-line__task" th:text="${row.task}">Formwork panels</span>
+							<span class="crew-line__actions" th:if="${canEdit}">
+								<a class="link-button" th:href="@{/daily-logs/{l}/crew-assignments/{c}/edit(l=${log.id}, c=${row.id})}"
+								   th:text="#{common.edit}" th:title="#{dailyLog.detail.editCrew}">Edit</a>
+								<form th:action="@{/daily-logs/{l}/crew-assignments/{c}/delete(l=${log.id}, c=${row.id})}" method="post">
+									<input type="hidden" name="logVersion" th:value="${log.version}">
+									<button type="submit" class="link-button link-button--danger" th:text="#{common.remove}"
+									        th:title="#{dailyLog.detail.removeCrew}">Remove</button>
+								</form>
+							</span>
+						</li>
+						<li class="crew-line crew-line--empty text-muted" th:if="${#lists.isEmpty(entry.crewAssignments)}" th:text="#{crewAssignment.none}">No crew assigned yet.</li>
+					</ul>
+					<div class="entry-view__foot" th:if="${canEdit}">
+						<a class="link-button link-button--success" th:href="@{/daily-logs/{l}/work-entries/{w}/crew-assignments/new(l=${log.id}, w=${entry.id})}">
+							+ <span th:text="#{dailyLog.detail.addCrew}">Add crew</span>
+						</a>
+					</div>
+				</article>
+			</section>
+		</div>
+
+		<aside class="detail-grid__side">
+			<section class="card" aria-labelledby="reopen-activity-title">
+				<h2 id="reopen-activity-title" th:text="#{history.reopens.title}">Reopen requests</h2>
+				<p class="text-muted" th:if="${reopen == null or #lists.isEmpty(reopen.history)}" th:text="#{history.reopens.empty}">This log has no reopen requests.</p>
+				<ol class="timeline" th:unless="${reopen == null or #lists.isEmpty(reopen.history)}">
+					<li class="timeline__item" th:each="r : ${reopen.history}"
+					    th:classappend="${r.pending()} ? 'is-current' : 'is-done'">
+						<span th:replace="~{fragments/chip :: status('reopen', ${r.status})}"></span>
+						<span class="timeline__note" th:text="${r.reason}">Concrete pour hours were recorded for the wrong crew.</span>
+						<span class="timeline__meta" th:text="#{reopen.requestedBy(${r.requestedByName}, ${#temporals.format(r.requestedAt, #messages.msg('format.datetime'))})}">Requested by Marko Kovačević · 29 Oct 2026, 08:15</span>
+						<span class="timeline__meta" th:if="${r.decidedByName != null}"
+						      th:text="#{reopen.decidedBy(${r.decidedByName}, ${#temporals.format(r.decidedAt, #messages.msg('format.datetime'))})}">Decided by Ivana Babić · 29 Oct 2026, 09:00</span>
+						<span class="timeline__note" th:if="${r.decisionNote != null}" th:text="${r.decisionNote}">Add the note in tomorrow's log.</span>
+					</li>
+				</ol>
+				<a class="btn btn--secondary" th:href="@{/daily-logs/{id}/history(id=${log.id})}">
+					<svg th:replace="~{fragments/icon :: icon('history')}"></svg>
+					<span th:text="#{history.link}">Revision history</span>
 				</a>
-			</div>
-		</article>
-	</section>
+			</section>
+		</aside>
+	</div>
 
 	<th:block th:if="${canEdit}">
 		<dialog th:replace="~{fragments/modal :: confirm('sign-off-log', ${day}, #{dailyLog.signOff.title}, #{dailyLog.signOff.subtitle}, ~{dailylog/detail :: #sign-off-form})}">
@@ -146,6 +218,29 @@
 				<input type="hidden" name="version" th:value="${log.version}">
 				<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
 				<button type="submit" class="btn btn--primary" th:text="#{dailyLog.detail.signOff}">Sign off</button>
+			</form>
+		</dialog>
+	</th:block>
+	<th:block th:if="${canRequestReopen}">
+		<dialog th:replace="~{fragments/modal :: modalIcon('reopen-modal', 'reopen', #{dailyLog.detail.eyebrow(${log.siteCode})} + ' · ' + ${day}, #{reopen.modal.title}, #{reopen.modal.subtitle}, ~{dailylog/detail :: #reopen-form}, ${reopenModal != null and reopenModal})}">
+			<form id="reopen-form" class="form" th:object="${reopenForm}" th:action="@{/daily-logs/{id}/reopen-requests(id=${log.id})}" method="post" novalidate>
+				<input type="hidden" th:field="*{version}">
+				<div th:replace="~{fragments/input :: textareaField('reason', #{reopen.field.reason}, #{reopen.field.reason.placeholder}, true)}"></div>
+				<div class="form-actions">
+					<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+					<button type="submit" class="btn btn--primary" th:text="#{reopen.send}">Send request</button>
+				</div>
+			</form>
+		</dialog>
+	</th:block>
+	<th:block th:if="${canDecideReopen}">
+		<dialog th:replace="~{fragments/modal :: modalIcon('reject-modal', 'alert', #{reopen.requestedBy(${reopen.pending.requestedByName}, ${#temporals.format(reopen.pending.requestedAt, #messages.msg('format.datetime'))})}, #{reopen.reject.title}, #{reopen.reject.subtitle}, ~{dailylog/detail :: #reject-form}, ${rejectModal != null and rejectModal})}">
+			<form id="reject-form" class="form" th:object="${rejectForm}" th:action="@{/daily-logs/{id}/reopen-requests/{r}/reject(id=${log.id}, r=${reopen.pending.id})}" method="post" novalidate>
+				<div th:replace="~{fragments/input :: textareaField('reason', #{reopen.field.rejectReason}, #{reopen.field.rejectReason.placeholder}, true)}"></div>
+				<div class="form-actions">
+					<button type="button" class="btn btn--secondary" data-modal-close th:text="#{common.cancel}">Cancel</button>
+					<button type="submit" class="btn btn--danger" th:text="#{reopen.reject.confirm}">Reject request</button>
+				</div>
 			</form>
 		</dialog>
 	</th:block>

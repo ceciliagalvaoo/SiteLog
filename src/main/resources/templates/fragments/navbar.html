@@ -11,7 +11,8 @@
     openIncidentCount - Number, badge on "Incidents" (hidden when null or 0)
     contextTitle      - String shown in the top bar / mobile header (current site name)
 
-  Roles are read with sec:authorize: hasRole('ADMIN') shows the Admin group. Hiding a link is
+  Roles are read with sec:authorize: hasRole('ADMIN') shows the Admin group, hasRole('SAFETY_SUPERVISOR')
+  the "Reopen requests" queue (sidebar and, as a fifth tab, the mobile tab bar). Hiding a link is
   only cosmetic - the URL rules and @PreAuthorize on the services are the real protection.
 */-->
 
@@ -42,6 +43,12 @@
 					      th:if="${openIncidentCount != null and openIncidentCount > 0}"
 					      th:text="${openIncidentCount}"
 					      th:title="#{nav.incidents.open(${openIncidentCount})}">4</span>
+				</a>
+			</li>
+			<li sec:authorize="hasRole('SAFETY_SUPERVISOR')">
+				<a class="nav-link" th:href="@{/reopen-requests}" href="/reopen-requests" th:aria-current="${active == 'reopen'} ? 'page'">
+					<svg th:replace="~{fragments/icon :: icon('reopen')}"></svg>
+					<span th:text="#{nav.reopenRequests}">Reopen requests</span>
 				</a>
 			</li>
 			<li>
@@ -154,6 +161,10 @@
 	<a th:href="@{/incidents}" href="/incidents" th:aria-current="${active == 'incidents'} ? 'page'">
 		<svg th:replace="~{fragments/icon :: icon('incidents')}"></svg>
 		<span th:text="#{nav.incidents}">Incidents</span>
+	</a>
+	<a sec:authorize="hasRole('SAFETY_SUPERVISOR')" th:href="@{/reopen-requests}" href="/reopen-requests" th:aria-current="${active == 'reopen'} ? 'page'">
+		<svg th:replace="~{fragments/icon :: icon('reopen')}"></svg>
+		<span th:text="#{nav.reopen.short}">Reopen</span>
 	</a>
 	<a th:href="@{/assisted-reporting}" href="/assisted-reporting" th:aria-current="${active == 'assist'} ? 'page'">
 		<svg th:replace="~{fragments/icon :: icon('assist')}"></svg>
