@@ -6,21 +6,14 @@ description: Entities, relations, business rules, delete rules, roles and state 
 
 # Domain model
 
-:::info Status (2026-11-25, milestone M3 week 10)
-Model accepted on 2026-10-31 (milestone M1). The tables exist since milestone M2 (Flyway
-`V2`–`V6`, plus `V7` in M3 week 10) and the JPA entities map them. The diagrams below were
-checked against the migrations and the entity classes on 2026-11-25. The permission matrix was
-confirmed on 2026-11-24. This page is the logical model; the physical
-schema (every column, constraint, index and trigger) is in [Database schema](./database.md), and
-the migrations win if the two disagree. The reasoning behind the mapping is in
-[ADR-0001](../adr/0001-persistence-model.md).
+This page is the logical model; the physical schema (every column, constraint, index and
+trigger) is in [Database schema](./database.md), and the migrations win if the two disagree. The
+reasoning behind the mapping is in [ADR-0001](../adr/0001-persistence-model.md).
 
 Entities in the code (`hr.algebra.sitelog.<feature>.domain`): `Site`, `Crew`, `AppUser`, `Role`,
 `DailyLog`, `WorkEntry`, `CrewAssignment`, `LogReopenRequest`, `Incident`, `CorrectiveAction`,
-`Notification`, `DomainAction` (`audit.domain`, M3 week 10), plus the Envers revision entity
-`AuditRevision` (`common.audit`).
-`IncidentDraft` is a table only; its entity arrives with the AI feature (M3).
-:::
+`Notification`, `DomainAction` (`audit.domain`), plus the Envers revision entity
+`AuditRevision` (`common.audit`). `IncidentDraft` is a table only.
 
 ## Aggregates
 

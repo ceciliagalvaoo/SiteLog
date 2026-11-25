@@ -6,24 +6,21 @@ description: Physical PostgreSQL schema created by the Flyway migrations V1–V7
 
 # Database schema
 
-:::info Status (2026-11-25, milestone M3 week 10)
-This page describes the schema exactly as the Flyway migrations `V1`–`V7` in
+This page describes the schema exactly as the Flyway migrations in
 `src/main/resources/db/migration/` create it. **The migrations are the source of truth**; if this
 page and a migration disagree, the migration wins. The V2–V5 rules are covered by integration
 tests against PostgreSQL 17 (Testcontainers) in `src/test/java/hr/algebra/sitelog/db/`; for V6 the
 repository queries and the two `CHECK` constraints are tested (`NotificationRepositoryTests`,
-`NotificationConstraintTests`). V7 (M3 week 10) is exercised through the services against PostgreSQL
-(`ReopenAndIncidentFlowTests` reads `domain_action`); its constraints and the append-only trigger
-on `domain_action` have no dedicated `db/` test yet.
-The JPA entities and the Envers mappings exist (M2) and Hibernate checks them against this schema
-at startup (`ddl-auto=validate`). There is no JPA entity for `incident_draft` yet (AI feature, M3);
-the table is only read by a native existence query (site delete rule).
+`NotificationConstraintTests`); V7 is exercised through the services against PostgreSQL
+(`ReopenAndIncidentFlowTests` reads `domain_action`).
+The JPA entities and the Envers mappings are checked by Hibernate against this schema at startup
+(`ddl-auto=validate`). The table `incident_draft` has no JPA entity; it is only read by a native
+existence query (site delete rule).
 
 Related pages: [domain model](./domain-model.md) (entities, roles, state machines),
 [architecture overview](./overview.md) (layers and request flows),
 [ADR-0001](../adr/0001-persistence-model.md) (persistence model),
 [ADR-0003](../adr/0003-reopen-audit-trail.md) (reopen audit trail).
-:::
 
 ## Migrations
 

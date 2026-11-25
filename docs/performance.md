@@ -1,16 +1,13 @@
 ---
 title: Performance
 sidebar_position: 6
-description: N+1 query on the site's daily log list - how it was reproduced, the SQL before and after the fix, and the measurement method. Draft (M2); the index measurement with EXPLAIN ANALYZE follows in M4.
+description: N+1 query on the site's daily log list - how it was reproduced, the SQL before and after the fix, and the measurement method.
 ---
 
 # Performance
 
-:::info Status (2026-11-07, milestone M2 - draft)
-This page records the **N+1 problem** of the daily log list, measured on the M2 code. The second
-measurement (indexes for the compliance report, `EXPLAIN ANALYZE` before and after on a large
-seed) is added in milestone M4.
-:::
+This page records the **N+1 problem** of the daily log list: how it was reproduced, the SQL
+before and after the fix, and the measurement method.
 
 ## 1. N+1 on the site's daily log list
 

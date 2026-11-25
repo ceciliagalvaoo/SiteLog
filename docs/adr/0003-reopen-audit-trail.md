@@ -13,14 +13,6 @@ description: How changes to a reopened daily log are recorded — Hibernate Enve
 - **Written:** 2026-11-04
 - **Milestone:** M2 (schema and Envers mapping), M3 (reopen workflow and audit view)
 
-:::info Status of the implementation (2026-11-25)
-| When | What |
-|---|---|
-| M2, 2026-11-04 | Audit tables created by `V3__incidents_and_reopen.sql`, made append-only by `V5__append_only_audit_tables.sql`. |
-| M2, week 7 | `hibernate-envers` added; `@Audited` on `DailyLog`, `WorkEntry`, `CrewAssignment` with `NOT_AUDITED` references; revision entity `AuditRevision` (`revinfo`) and `AuditRevisionListener` (user email, or `system`); `DefaultAuditStrategy` set in `application.yml`. Every change to the aggregate made through the application is audited from now on. `EntityMappingTests` checks that audit rows are written with the user. |
-| M3, week 10 | **Implemented.** Reopen workflow in `LogReopenService`: request by the site manager of the log's site (reason mandatory, one `PENDING` per log, supervisors notified), approval by a safety supervisor (`REOPENED`, `revision` + 1, optional note), rejection with a mandatory reason (`decision_note`, V7); the request row is locked with `SELECT ... FOR UPDATE` while it is decided. Decision 6: `@AuditedAction` + `DomainActionAspect` (outermost advice, outside `@PreAuthorize` and the transaction) record sign-off, reopen request / approval / rejection, incident transitions and corrective action changes with their outcome in the append-only `domain_action` table (V7) and the `sitelog.audit` log. Decision 4: `DailyLogHistoryService` builds before/after per field from the Envers revisions with `AuditReader`; page `/daily-logs/{id}/history`, API `GET /api/v1/daily-logs/{id}/revisions`. It lists **every** revision (consistent with decision 5) with the reopen requests and the recorded actions next to them, instead of only the window between approval and the next sign-off. Tested in `ReopenAndIncidentFlowTests`, `LogReopenServiceTests`, `DomainActionAspectTests`. Details: [Architecture — AR1](../architecture/overview.md#11-ar1-audited-reopen), [domain action aspect](../architecture/overview.md#13-domain-action-aspect). |
-:::
-
 ## Context
 
 Advanced requirement 1: a daily log **locks after sign-off**, and a reopen **requires a reason**
@@ -123,3 +115,29 @@ PostgreSQL 17 everywhere.
     (`session_replication_role = replica`).
 
   Details: [database schema](../architecture/database.md#audit-tables-envers).
+
+## Implementation
+
+- **Audit tables:** created by `V3__incidents_and_reopen.sql` and made append-only by
+  `V5__append_only_audit_tables.sql`.
+- **Envers mapping:** `@Audited` on `DailyLog`, `WorkEntry` and `CrewAssignment` with
+  `NOT_AUDITED` references; revision entity `AuditRevision` (`revinfo`) and
+  `AuditRevisionListener` (user email, or `system`); `DefaultAuditStrategy` set in
+  `application.yml`. `EntityMappingTests` checks that audit rows are written with the user.
+- **Reopen workflow:** `LogReopenService`. The site manager of the log's site requests a reopen
+  (reason mandatory, one `PENDING` per log, supervisors notified); a safety supervisor approves
+  (`REOPENED`, `revision` + 1, optional note) or rejects with a mandatory reason
+  (`decision_note`, V7). The request row is locked with `SELECT ... FOR UPDATE` while it is
+  decided.
+- **Decision 6:** `@AuditedAction` + `DomainActionAspect` (outermost advice, outside
+  `@PreAuthorize` and the transaction) record sign-off, reopen request / approval / rejection,
+  incident transitions and corrective action changes with their outcome in the append-only
+  `domain_action` table (V7) and the `sitelog.audit` log.
+- **Decision 4:** `DailyLogHistoryService` builds before/after per field from the Envers
+  revisions with `AuditReader`; page `/daily-logs/{id}/history`, API
+  `GET /api/v1/daily-logs/{id}/revisions`. It lists **every** revision (consistent with
+  decision 5) with the reopen requests and the recorded actions next to them, instead of only the
+  window between approval and the next sign-off.
+- **Tests:** `ReopenAndIncidentFlowTests`, `LogReopenServiceTests`, `DomainActionAspectTests`.
+- **Details:** [Architecture — AR1](../architecture/overview.md#11-ar1-audited-reopen),
+  [domain action aspect](../architecture/overview.md#13-domain-action-aspect).

@@ -6,23 +6,10 @@ description: System context, containers, components, layering rules, profiles, r
 
 # Architecture overview
 
-:::info Status (2026-11-25, milestone M3 week 10)
-**Implemented** today: the M1 skeleton (Flyway, `ddl-auto=validate`, `open-in-view=false`, the
-`dev` profile, Testcontainers tests); from M2, the database (migrations `V2`–`V6`), the JPA
-entities with the Envers mapping, the services and the Thymeleaf screens for sites, crews, daily
-logs (with work entries and crew rows), notifications and the error pages, in English and
-Croatian; from M3 week 9, login with the four roles and method-level authorization
-([section 8](#8-security)), user administration and password change, and the deployment
-([section 9](#9-deployment)); from M3 week 10, the REST API with OpenAPI
-([section 10](#10-rest-api)), the audited reopen (AR1, [section 11](#11-ar1-audited-reopen)),
-the incident severity workflow with corrective actions (AR2, [section 12](#12-ar2-incident-severity-workflow)),
-the domain action aspect ([section 13](#13-domain-action-aspect)) and the notification
-producers ([section 14](#14-notifications)), with migration `V7`. The AI feature (M3 week 11),
-the compliance report and the scheduled jobs (M4) are **planned**. The domain is described in the [domain model](./domain-model.md);
-persistence choices in [ADR-0001](../adr/0001-persistence-model.md); the reopen audit trail in
+The domain is described in the [domain model](./domain-model.md); persistence choices in
+[ADR-0001](../adr/0001-persistence-model.md); the reopen audit trail in
 [ADR-0003](../adr/0003-reopen-audit-trail.md); the physical schema in
 [Database schema](./database.md).
-:::
 
 ## 1. System context
 
